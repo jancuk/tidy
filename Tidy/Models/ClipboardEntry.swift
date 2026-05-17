@@ -31,6 +31,8 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
     case openAI = "openai"
     case anthropic
     case languageTool = "languagetool"
+    case openCode = "opencode"
+    case ollama
 
     var id: String { rawValue }
 
@@ -44,6 +46,19 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
             "Anthropic"
         case .languageTool:
             "LanguageTool"
+        case .openCode:
+            "OpenCode (Zen)"
+        case .ollama:
+            "Ollama (Local)"
+        }
+    }
+
+    var requiresAPIKey: Bool {
+        switch self {
+        case .ollama:
+            false
+        default:
+            true
         }
     }
 }

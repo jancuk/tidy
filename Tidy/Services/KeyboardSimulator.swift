@@ -19,4 +19,8 @@ enum KeyboardSimulator {
     static func paste() {
         sendCommandKey(CGKeyCode(kVK_ANSI_V))
     }
+
+    static func selectAll() {
+        sendCommandKey(CGKeyCode(kVK_ANSI_A))
+    }
 }

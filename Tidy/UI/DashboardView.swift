@@ -4,6 +4,7 @@ struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openSettings) private var openSettings
     @State private var accessibilityTrusted: Bool = Permissions.isAccessibilityTrusted
+    @AppStorage(AppDefaults.autoSuggestEnabled) private var autoSuggestEnabled: Bool = true
     private let permissionTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -44,6 +45,15 @@ struct DashboardView: View {
                     Label("Open Clipboard Palette", systemImage: "doc.on.clipboard")
                 }
                 .buttonStyle(.plain)
+            }
+
+            Section("Auto-suggest") {
+                Toggle(isOn: $autoSuggestEnabled) {
+                    Label("Detect grammar automatically", systemImage: "sparkles")
+                }
+                Text("Tidy watches focused text fields and offers suggestions after you pause typing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Hotkeys") {
