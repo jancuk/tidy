@@ -98,6 +98,10 @@ enum AppDefaults {
     static let clipboardMaxEntries = "clipboardMaxEntries"
     static let clipboardMaxAgeDays = "clipboardMaxAgeDays"
     static let didCompleteFirstRun = "didCompleteFirstRun"
+    static let autoSuggestEnabled = "autoSuggestEnabled"
+    static let openCodeModel = "openCodeModel"
+    static let ollamaBaseURL = "ollamaBaseURL"
+    static let ollamaModel = "ollamaModel"
 }
 
 extension UserDefaults {
@@ -108,7 +112,11 @@ extension UserDefaults {
             AppDefaults.grammarProvider: GrammarProviderID.gemini.rawValue,
             AppDefaults.clipboardMaxEntries: 200,
             AppDefaults.clipboardMaxAgeDays: 7,
-            AppDefaults.didCompleteFirstRun: false
+            AppDefaults.didCompleteFirstRun: false,
+            AppDefaults.autoSuggestEnabled: true,
+            AppDefaults.openCodeModel: "deepseek-v4-flash-free",
+            AppDefaults.ollamaBaseURL: "http://localhost:11434",
+            AppDefaults.ollamaModel: "gnokit/improve-grammar"
         ])
     }
 }

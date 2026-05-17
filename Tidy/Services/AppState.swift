@@ -6,11 +6,13 @@ import ServiceManagement
 final class AppState: ObservableObject {
     let clipboardService: ClipboardService
     let correctionLogStore: CorrectionLogStore
+    let suggestionMonitor: SuggestionMonitor
 
     private let hotkeyManager = HotkeyManager()
     private let hud = HUDController()
     private let grammarService: GrammarService
     private let paletteController: ClipboardPaletteController
+    private let suggestionPopup = SuggestionPopupController()
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
@@ -19,6 +21,7 @@ final class AppState: ObservableObject {
         correctionLogStore = CorrectionLogStore()
         grammarService = GrammarService(hud: hud, logStore: correctionLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
+        suggestionMonitor = SuggestionMonitor()
 
         hotkeyManager.onGrammar = { [weak self] in
             Task { @MainActor in self?.grammarService.tidySelectedText() }
@@ -27,12 +30,30 @@ final class AppState: ObservableObject {
             Task { @MainActor in self?.paletteController.toggle() }
         }
 
+        suggestionMonitor.onSuggestion = { [weak self] suggestion in
+            guard let self else { return }
+            self.suggestionPopup.show(original: suggestion.original, corrected: suggestion.corrected, anchorRect: suggestion.anchorRect)
+        }
+        suggestionMonitor.onDismiss = { [weak self] in
+            self?.suggestionPopup.dismiss()
+        }
+        suggestionPopup.onAccept = { [weak self] corrected in
+            guard let self else { return }
+            self.suggestionMonitor.applyReplacement(corrected)
+            self.suggestionMonitor.noteAccepted()
+            self.correctionLogStore.append(original: "", corrected: corrected, providerID: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "")
+        }
+        suggestionPopup.onDismiss = { [weak self] original in
+            self?.suggestionMonitor.noteDismissed(text: original)
+        }
+
         start()
     }
 
     func start() {
         NSApp.setActivationPolicy(.regular)
         clipboardService.start()
+        suggestionMonitor.start()
         registerHotkeys()
         if !UserDefaults.standard.bool(forKey: AppDefaults.didCompleteFirstRun) {
             Permissions.requestAccessibilityIfNeeded()

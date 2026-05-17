@@ -9,7 +9,7 @@ struct GeminiProvider: GrammarProvider {
             throw GrammarProviderError.missingAPIKey("Gemini Flash or VITE_GEMINI_API_KEY")
         }
 
-        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent")!)
+        var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")!)
         request.httpMethod = "POST"
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -29,8 +29,10 @@ struct GeminiProvider: GrammarProvider {
         ))
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode ?? 500 < 300 else {
-            throw GrammarProviderError.invalidResponse
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 500
+        guard status < 300 else {
+            let body = String(data: data, encoding: .utf8) ?? "(no body)"
+            throw GrammarProviderError.httpError(status: status, body: body)
         }
 
         let decoded = try JSONDecoder().decode(GeminiResponse.self, from: data)

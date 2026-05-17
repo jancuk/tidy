@@ -7,6 +7,9 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.clipboardHotkey) private var clipboardHotkey = Hotkey.clipboardDefault.displayValue
     @AppStorage(AppDefaults.clipboardMaxEntries) private var maxEntries = 200
     @AppStorage(AppDefaults.clipboardMaxAgeDays) private var maxAgeDays = 7
+    @AppStorage(AppDefaults.openCodeModel) private var openCodeModel = "deepseek-v4-flash-free"
+    @AppStorage(AppDefaults.ollamaBaseURL) private var ollamaBaseURL = "http://localhost:11434"
+    @AppStorage(AppDefaults.ollamaModel) private var ollamaModel = "gnokit/improve-grammar"
 
     @State private var launchAtLogin = false
     @State private var keyValues: [String: String] = [:]
@@ -72,8 +75,28 @@ struct SettingsView: View {
             }
 
             ForEach(GrammarProviderID.allCases) { provider in
-                SecureField("\(provider.displayName) API key", text: binding(for: provider.rawValue))
+                if provider.requiresAPIKey {
+                    SecureField("\(provider.displayName) API key", text: binding(for: provider.rawValue))
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            if grammarProvider == GrammarProviderID.openCode.rawValue {
+                TextField("OpenCode model", text: $openCodeModel, prompt: Text("e.g. deepseek-v4-flash-free, minimax-m2.5-free"))
                     .textFieldStyle(.roundedBorder)
+                Text("Sent as the 'model' field to https://opencode.ai/zen/v1/chat/completions")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            if grammarProvider == GrammarProviderID.ollama.rawValue {
+                TextField("Ollama base URL", text: $ollamaBaseURL, prompt: Text("http://localhost:11434"))
+                    .textFieldStyle(.roundedBorder)
+                TextField("Ollama model", text: $ollamaModel, prompt: Text("e.g. gnokit/improve-grammar, llama3.1"))
+                    .textFieldStyle(.roundedBorder)
+                Text("Runs locally — no API key required. Posts to {baseURL}/api/chat.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Text("Gemini Flash uses VITE_GEMINI_API_KEY from the app environment first, then this saved key.")

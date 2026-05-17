@@ -16,7 +16,7 @@ final class HUDController {
         if window == nil {
             let hostingView = NSHostingView(rootView: HUDView(state: state))
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 210, height: 56),
+                contentRect: NSRect(x: 0, y: 0, width: 360, height: 56),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -50,7 +50,7 @@ final class HUDController {
     private func positionNearMouse() {
         guard let window else { return }
         let mouse = NSEvent.mouseLocation
-        let frame = NSRect(x: mouse.x + 16, y: mouse.y - 72, width: 210, height: 56)
+        let frame = NSRect(x: mouse.x + 16, y: mouse.y - 72, width: 360, height: 56)
         window.setFrame(frame, display: true)
     }
 }
@@ -76,11 +76,13 @@ struct HUDView: View {
             }
 
             Text(message)
-                .font(.system(size: 14, weight: .medium))
-                .lineLimit(1)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
-        .frame(width: 210, height: 56, alignment: .leading)
+        .padding(.vertical, 12)
+        .frame(width: 360, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
