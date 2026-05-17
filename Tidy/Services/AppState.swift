@@ -31,7 +31,7 @@ final class AppState: ObservableObject {
     }
 
     func start() {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
         clipboardService.start()
         registerHotkeys()
         if !UserDefaults.standard.bool(forKey: AppDefaults.didCompleteFirstRun) {
