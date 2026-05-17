@@ -17,7 +17,7 @@ struct TidyApp: App {
         WindowGroup("Tidy") {
             DashboardView()
                 .environmentObject(appState)
-                .frame(minWidth: 720, minHeight: 480)
+                .frame(minWidth: 960, minHeight: 620)
         }
         .windowResizability(.contentMinSize)
 
