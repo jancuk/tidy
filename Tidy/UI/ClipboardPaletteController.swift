@@ -3,12 +3,22 @@ import Carbon
 import SwiftUI
 
 @MainActor
+final class PaletteSelectionState: ObservableObject {
+    @Published var selectedIndex: Int = 0
+}
+
+@MainActor
 final class ClipboardPaletteController {
     private let clipboardService: ClipboardService
+    private let selectionState = PaletteSelectionState()
     private var panel: NSPanel?
     private var eventMonitor: Any?
     private weak var previouslyFocusedApp: NSRunningApplication?
-    private var selectedIndex = 0
+
+    private var selectedIndex: Int {
+        get { selectionState.selectedIndex }
+        set { selectionState.selectedIndex = newValue }
+    }
 
     init(clipboardService: ClipboardService) {
         self.clipboardService = clipboardService
@@ -46,10 +56,7 @@ final class ClipboardPaletteController {
 
             let rootView = ClipboardPaletteView(
                 clipboardService: clipboardService,
-                selectedIndex: Binding(
-                    get: { [weak self] in self?.selectedIndex ?? 0 },
-                    set: { [weak self] in self?.selectedIndex = $0 }
-                ),
+                selectionState: selectionState,
                 paste: { [weak self] in self?.pasteSelected() },
                 copy: { [weak self] in self?.copySelected() },
                 delete: { [weak self] in self?.deleteSelected() },
@@ -145,12 +152,14 @@ final class ClipboardPaletteController {
 
 struct ClipboardPaletteView: View {
     @ObservedObject var clipboardService: ClipboardService
-    @Binding var selectedIndex: Int
+    @ObservedObject var selectionState: PaletteSelectionState
     let paste: () -> Void
     let copy: () -> Void
     let delete: () -> Void
     let hide: () -> Void
     @FocusState private var searchFocused: Bool
+
+    private var selectedIndex: Int { selectionState.selectedIndex }
 
     var body: some View {
         ZStack {
@@ -184,13 +193,13 @@ struct ClipboardPaletteView: View {
                                     ClipboardRow(entry: entry, isSelected: index == selectedIndex)
                                         .id(entry.id)
                                         .onTapGesture {
-                                            selectedIndex = index
+                                            selectionState.selectedIndex = index
                                             paste()
                                         }
                                 }
                             }
                         }
-                        .onChange(of: selectedIndex) { _, newValue in
+                        .onChange(of: selectionState.selectedIndex) { _, newValue in
                             guard clipboardService.entries.indices.contains(newValue) else { return }
                             proxy.scrollTo(clipboardService.entries[newValue].id, anchor: .center)
                         }
