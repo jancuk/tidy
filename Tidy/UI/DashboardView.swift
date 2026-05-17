@@ -2,6 +2,7 @@ import SwiftUI
 
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
+    case developerTools
     case clipboard
     case correctionLog
 
@@ -10,6 +11,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var title: String {
         switch self {
         case .home: "Home"
+        case .developerTools: "Developer Tools"
         case .clipboard: "Clipboard History"
         case .correctionLog: "Correction Log"
         }
@@ -18,6 +20,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var systemImage: String {
         switch self {
         case .home: "house"
+        case .developerTools: "hammer"
         case .clipboard: "doc.on.clipboard"
         case .correctionLog: "list.bullet.rectangle"
         }
@@ -45,6 +48,8 @@ struct DashboardView: View {
             switch selection {
             case .home:
                 HomeView(accessibilityTrusted: $accessibilityTrusted)
+            case .developerTools:
+                DeveloperToolsView()
             case .clipboard:
                 ClipboardListView()
                     .environmentObject(appState.clipboardService)
