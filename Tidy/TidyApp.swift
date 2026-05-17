@@ -14,7 +14,14 @@ struct TidyApp: App {
     @Environment(\.openSettings) private var openSettings
 
     var body: some Scene {
-        MenuBarExtra("Tidy", systemImage: "textformat") {
+        WindowGroup("Tidy") {
+            DashboardView()
+                .environmentObject(appState)
+                .frame(minWidth: 720, minHeight: 480)
+        }
+        .windowResizability(.contentMinSize)
+
+        MenuBarExtra("Tidy", systemImage: "sparkles") {
             Button {
                 appState.openPalette()
             } label: {
