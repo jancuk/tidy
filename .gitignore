@@ -16,6 +16,13 @@ build/
 # Local Codex/Claude worktrees and assistant state
 .claude/
 
+# Local developer config (Team ID, signing overrides)
+Local.xcconfig
+
+# AI-assisted design process artefacts
+.superpowers/
+docs/superpowers/
+
 # Local environment files
 .env
 .env.*

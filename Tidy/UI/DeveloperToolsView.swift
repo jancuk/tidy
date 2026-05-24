@@ -211,8 +211,8 @@ private struct JSONFormatterView: View {
 }
 
 private struct JWTDebuggerView: View {
-    @State private var token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkF6aGFyIEFtaXIiLCJpYXQiOjE3MTYyMzkwMjIsImV4cCI6MTc0Nzc3NTAyMn0.signature"
-    @State private var result = JWTTool.decode("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkF6aGFyIEFtaXIiLCJpYXQiOjE3MTYyMzkwMjIsImV4cCI6MTc0Nzc3NTAyMn0.signature")
+    @State private var token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIiwiaWF0IjoxNzE2MjM5MDIyLCJleHAiOjE3NDc3NzUwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    @State private var result = JWTTool.decode("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIiwiaWF0IjoxNzE2MjM5MDIyLCJleHAiOjE3NDc3NzUwMjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c")
 
     var body: some View {
         ToolScreen(
