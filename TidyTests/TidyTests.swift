@@ -81,4 +81,8 @@ struct TidyTests {
         #expect(abs(ns.blueComponent  - (0x2e / 255.0)) < 0.01)
     }
 
+    @Test func dashboardSectionIncludesSettings() {
+        #expect(DashboardSection.allCases.contains(.settings))
+    }
+
 }
