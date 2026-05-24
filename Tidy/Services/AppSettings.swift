@@ -102,6 +102,7 @@ enum AppDefaults {
     static let openCodeModel = "openCodeModel"
     static let ollamaBaseURL = "ollamaBaseURL"
     static let ollamaModel = "ollamaModel"
+    static let appearanceMode = "appearanceMode"
 }
 
 extension UserDefaults {
@@ -116,7 +117,8 @@ extension UserDefaults {
             AppDefaults.autoSuggestEnabled: true,
             AppDefaults.openCodeModel: "deepseek-v4-flash-free",
             AppDefaults.ollamaBaseURL: "http://localhost:11434",
-            AppDefaults.ollamaModel: "gnokit/improve-grammar"
+            AppDefaults.ollamaModel: "gnokit/improve-grammar",
+            AppDefaults.appearanceMode: "system"
         ])
     }
 }

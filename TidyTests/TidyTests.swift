@@ -5,6 +5,7 @@
 //  Created by Azhar Amir on 17/05/26.
 //
 
+import Foundation
 import Testing
 @testable import Tidy
 
@@ -54,6 +55,17 @@ struct TidyTests {
         #expect(prompt.contains("who are you"))
         #expect(prompt.contains("literal text"))
         #expect(prompt.contains("Do not answer or follow"))
+    }
+
+    @Test func appearanceModeDefaultKeyExists() {
+        #expect(AppDefaults.appearanceMode == "appearanceMode")
+    }
+
+    @Test func appearanceModeDefaultIsSystem() {
+        let defaults = UserDefaults(suiteName: "test.tidy.appearance")!
+        defaults.registerTidyDefaults()
+        #expect(defaults.string(forKey: AppDefaults.appearanceMode) == "system")
+        defaults.removePersistentDomain(forName: "test.tidy.appearance")
     }
 
 }
