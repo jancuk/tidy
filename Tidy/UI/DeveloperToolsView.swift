@@ -126,6 +126,7 @@ private struct ToolSidebarRow: View {
     let selected: Bool
     let action: () -> Void
     @State private var isHovered = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
@@ -133,14 +134,14 @@ private struct ToolSidebarRow: View {
                 Image(systemName: tool.systemImage)
                     .font(.system(size: 13))
                     .frame(width: 16)
-                    .foregroundStyle(selected ? .white : Color(NSColor.secondaryLabelColor))
+                    .foregroundStyle(selectedForeground)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tool.title)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selected ? .white : Color(NSColor.labelColor))
+                        .foregroundStyle(selectedForeground)
                     Text(tool.subtitle)
                         .font(.system(size: 10))
-                        .foregroundStyle(selected ? .white.opacity(0.7) : Color(NSColor.secondaryLabelColor))
+                        .foregroundStyle(selected ? selectedForeground.opacity(0.7) : Color(NSColor.secondaryLabelColor))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -151,12 +152,22 @@ private struct ToolSidebarRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(selected
-                        ? Color(NSColor.labelColor).opacity(0.85)
+                        ? selectedBackground
                         : (isHovered ? Color(NSColor.labelColor).opacity(0.05) : Color.clear))
             )
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+    }
+
+    private var selectedBackground: Color {
+        colorScheme == .dark
+            ? Color.white.opacity(0.15)
+            : Color(red: 0.23, green: 0.23, blue: 0.24).opacity(0.9)
+    }
+
+    private var selectedForeground: Color {
+        colorScheme == .dark ? Color(NSColor.labelColor) : .white
     }
 }
 
