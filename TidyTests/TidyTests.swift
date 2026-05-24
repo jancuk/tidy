@@ -244,7 +244,7 @@ struct TidyTests {
     }
 
     @Test func claudeCodeCLIServiceThrowsForMissingExecutable() {
-        #expect(throws: (any Error).self) {
+        #expect(throws: ClaudeCodeCLIError.self) {
             try ClaudeCodeCLIService.resolvedExecutableURL(for: "/nonexistent/claude-xyz")
         }
     }

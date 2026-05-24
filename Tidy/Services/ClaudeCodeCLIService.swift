@@ -123,13 +123,8 @@ private extension String {
 }
 
 private func stripANSI(_ text: String) -> String {
-    let withoutEscapedANSI = text.replacingOccurrences(
+    text.replacingOccurrences(
         of: "\u{001B}\\[[0-9;?]*[ -/]*[@-~]",
-        with: "",
-        options: .regularExpression
-    )
-    return withoutEscapedANSI.replacingOccurrences(
-        of: #"(?<!\S)\[[0-9;]*[A-Za-z]"#,
         with: "",
         options: .regularExpression
     )
