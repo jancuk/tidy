@@ -377,11 +377,13 @@ struct ClipboardListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(clipboardService.entries.enumerated()), id: \.element.id) { index, entry in
-                            ClipboardRowView(entry: entry, isFirst: index == 0) {
-                                clipboardService.delete(entry)
-                            }
-                            if index < clipboardService.entries.count - 1 {
+                        ForEach(clipboardService.entries) { entry in
+                            ClipboardRowView(
+                                entry: entry,
+                                isFirst: entry.id == clipboardService.entries.first?.id,
+                                onDelete: { clipboardService.delete(entry) }
+                            )
+                            if entry.id != clipboardService.entries.last?.id {
                                 Divider().opacity(0.4).padding(.leading, 18)
                             }
                         }
