@@ -20,18 +20,10 @@ struct OllamaProvider: GrammarProvider {
         request.httpMethod = "POST"
         request.timeoutInterval = 60 // local models can be slow
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Many Ollama grammar models (e.g. gnokit/improve-grammar) are fine-tuned
-        // to take raw text directly. Skip the system prompt for those.
-        let isFineTunedGrammarModel = model.lowercased().contains("grammar")
-            || model.lowercased().contains("improve")
-            || model.lowercased().contains("correct")
-
-        let messages: [OllamaRequest.Message] = isFineTunedGrammarModel
-            ? [.init(role: "user", content: text)]
-            : [
-                .init(role: "system", content: GrammarProviderFactory.prompt),
-                .init(role: "user", content: text)
-            ]
+        let messages: [OllamaRequest.Message] = [
+            .init(role: "system", content: GrammarProviderFactory.prompt),
+            .init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text))
+        ]
 
         request.httpBody = try JSONEncoder().encode(OllamaRequest(
             model: model,

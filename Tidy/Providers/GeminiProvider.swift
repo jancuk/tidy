@@ -20,8 +20,7 @@ struct GeminiProvider: GrammarProvider {
                     .init(text: """
                     \(GrammarProviderFactory.prompt)
 
-                    Text:
-                    \(text)
+                    \(GrammarProviderFactory.inputPrompt(for: text))
                     """)
                 ])
             ],
