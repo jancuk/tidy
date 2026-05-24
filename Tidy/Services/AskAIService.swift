@@ -209,9 +209,45 @@ enum AskAIError: LocalizedError {
 }
 
 struct AskAIService {
-    func ask(_ question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
+    func ask(_ question: String, history: [AskAIMessage], context: AskAIContext, logStore: AIRequestLogStore) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+        let providerName = providerID.displayName
+        let start = Date()
 
+        do {
+            let answer = try await performAsk(question: question, history: history, context: context, providerID: providerID)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            Task { @MainActor in
+                logStore.append(AIRequestLogEntry(
+                    providerName: providerName,
+                    requestPreview: String(question.prefix(100)),
+                    durationMs: ms,
+                    source: "ask-ai"
+                ))
+            }
+            return answer
+        } catch {
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            Task { @MainActor in
+                logStore.append(AIRequestLogEntry(
+                    providerName: providerName,
+                    requestPreview: String(question.prefix(100)),
+                    statusCode: httpStatus(from: error),
+                    errorMessage: error.localizedDescription,
+                    durationMs: ms,
+                    source: "ask-ai"
+                ))
+            }
+            throw error
+        }
+    }
+
+    private func httpStatus(from error: Error) -> Int? {
+        if case AskAIError.httpError(let status, _) = error { return status }
+        return nil
+    }
+
+    private func performAsk(question: String, history: [AskAIMessage], context: AskAIContext, providerID: GrammarProviderID) async throws -> String {
         // CLI-based providers are handled before the switch (special prompt-based invocation)
         if providerID == .codexCLI {
             return try await askCodexCLI(question: question, history: history, context: context)

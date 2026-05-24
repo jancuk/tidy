@@ -6,6 +6,7 @@ import ServiceManagement
 final class AppState: ObservableObject {
     let clipboardService: ClipboardService
     let correctionLogStore: CorrectionLogStore
+    let aiRequestLogStore: AIRequestLogStore
     let suggestionMonitor: SuggestionMonitor
 
     private let hotkeyManager = HotkeyManager()
@@ -20,9 +21,10 @@ final class AppState: ObservableObject {
         UserDefaults.standard.registerTidyDefaults()
         clipboardService = ClipboardService()
         correctionLogStore = CorrectionLogStore()
-        grammarService = GrammarService(hud: hud, logStore: correctionLogStore)
+        aiRequestLogStore = AIRequestLogStore()
+        grammarService = GrammarService(hud: hud, logStore: correctionLogStore, requestLogStore: aiRequestLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
-        askAIController = AskAIController()
+        askAIController = AskAIController(requestLogStore: aiRequestLogStore)
         suggestionMonitor = SuggestionMonitor()
 
         hotkeyManager.onGrammar = { [weak self] in
@@ -90,18 +92,40 @@ final class AppState: ObservableObject {
 
         hud.show(.loading("Tidying clipboard..."))
         Task {
+            let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+            let provider = GrammarProviderFactory.provider(for: providerID)
+            let start = Date()
             do {
-                let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
-                let provider = GrammarProviderFactory.provider(for: providerID)
                 let corrected = try await provider.fixGrammar(text, language: nil)
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(corrected, forType: .string)
                 correctionLogStore.append(original: text, corrected: corrected, providerID: providerID.rawValue)
+                aiRequestLogStore.append(AIRequestLogEntry(
+                    providerName: provider.displayName,
+                    requestPreview: String(text.prefix(100)),
+                    durationMs: ms,
+                    source: "grammar"
+                ))
                 hud.show(.success("Clipboard tidied"), autoDismissAfter: 1)
             } catch {
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
+                aiRequestLogStore.append(AIRequestLogEntry(
+                    providerName: provider.displayName,
+                    requestPreview: String(text.prefix(100)),
+                    statusCode: httpStatus(from: error),
+                    errorMessage: error.localizedDescription,
+                    durationMs: ms,
+                    source: "grammar"
+                ))
                 hud.show(.error(error.localizedDescription), autoDismissAfter: 2.5)
             }
         }
+    }
+
+    private func httpStatus(from error: Error) -> Int? {
+        if case GrammarProviderError.httpError(let status, _) = error { return status }
+        return nil
     }
 
     func setLaunchAtLogin(_ enabled: Bool) throws {

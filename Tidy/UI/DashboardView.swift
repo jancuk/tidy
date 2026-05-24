@@ -6,6 +6,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     case clipboard
     case developerTools
     case correctionLog
+    case aiRequestLog
     case settings
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .clipboard:      "Clipboard History"
         case .developerTools: "Developer Tools"
         case .correctionLog:  "Correction Log"
+        case .aiRequestLog:   "AI Requests"
         case .settings:       "Settings"
         }
     }
@@ -28,6 +30,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .clipboard:      "doc.on.clipboard"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle"
+        case .aiRequestLog:   "network"
         case .settings:       "gear"
         }
     }
@@ -127,6 +130,9 @@ struct DashboardView: View {
                 case .correctionLog:
                     CorrectionLogView()
                         .environmentObject(appState.correctionLogStore)
+                case .aiRequestLog:
+                    AIRequestLogView()
+                        .environmentObject(appState.aiRequestLogStore)
                 case .settings:
                     SettingsView()
                         .environmentObject(appState)

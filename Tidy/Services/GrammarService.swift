@@ -6,10 +6,12 @@ import Carbon
 final class GrammarService: ObservableObject {
     private let hud: HUDController
     private let logStore: CorrectionLogStore
+    private let requestLogStore: AIRequestLogStore
 
-    init(hud: HUDController, logStore: CorrectionLogStore) {
+    init(hud: HUDController, logStore: CorrectionLogStore, requestLogStore: AIRequestLogStore) {
         self.hud = hud
         self.logStore = logStore
+        self.requestLogStore = requestLogStore
     }
 
     func tidySelectedText() {
@@ -36,14 +38,40 @@ final class GrammarService: ObservableObject {
 
                 let providerID = currentProviderID()
                 let provider = GrammarProviderFactory.provider(for: providerID)
-                let corrected = try await provider.fixGrammar(selectedText, language: nil)
-                try await replaceSelection(with: corrected)
-                logStore.append(original: selectedText, corrected: corrected, providerID: providerID.rawValue)
-                hud.show(.success("Tidied"), autoDismissAfter: 0.8)
+                let start = Date()
+                do {
+                    let corrected = try await provider.fixGrammar(selectedText, language: nil)
+                    let ms = Int(Date().timeIntervalSince(start) * 1000)
+                    try await replaceSelection(with: corrected)
+                    logStore.append(original: selectedText, corrected: corrected, providerID: providerID.rawValue)
+                    requestLogStore.append(AIRequestLogEntry(
+                        providerName: provider.displayName,
+                        requestPreview: String(selectedText.prefix(100)),
+                        durationMs: ms,
+                        source: "grammar"
+                    ))
+                    hud.show(.success("Tidied"), autoDismissAfter: 0.8)
+                } catch {
+                    let ms = Int(Date().timeIntervalSince(start) * 1000)
+                    requestLogStore.append(AIRequestLogEntry(
+                        providerName: provider.displayName,
+                        requestPreview: String(selectedText.prefix(100)),
+                        statusCode: httpStatus(from: error),
+                        errorMessage: error.localizedDescription,
+                        durationMs: ms,
+                        source: "grammar"
+                    ))
+                    throw error
+                }
             } catch {
                 hud.show(.error(error.localizedDescription), autoDismissAfter: 2.5)
             }
         }
+    }
+
+    private func httpStatus(from error: Error) -> Int? {
+        if case GrammarProviderError.httpError(let status, _) = error { return status }
+        return nil
     }
 
     private func currentProviderID() -> GrammarProviderID {
