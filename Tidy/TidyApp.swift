@@ -11,13 +11,14 @@ import SwiftUI
 @main
 struct TidyApp: App {
     @StateObject private var appState = AppState()
-    @Environment(\.openSettings) private var openSettings
+    @AppStorage(AppDefaults.appearanceMode) private var appearanceMode = "system"
 
     var body: some Scene {
         WindowGroup("Tidy") {
             DashboardView()
                 .environmentObject(appState)
-                .frame(minWidth: 960, minHeight: 620)
+                .frame(minWidth: 820, minHeight: 540)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowResizability(.contentMinSize)
 
@@ -36,12 +37,6 @@ struct TidyApp: App {
 
             Divider()
 
-            Button {
-                openSettings()
-            } label: {
-                Label("Settings", systemImage: "gear")
-            }
-
             Button(role: .destructive) {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -53,6 +48,15 @@ struct TidyApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
+        }
+    }
+
+    private var resolvedColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
         }
     }
 }
