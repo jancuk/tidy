@@ -1,0 +1,129 @@
+import AppKit
+import Foundation
+
+@MainActor
+final class ClaudeLoginController: ObservableObject {
+    @Published var output = ""
+    @Published var status = "Not checked"
+    @Published var isSigningIn = false
+
+    private var process: Process?
+    private var outputPipe: Pipe?
+    private var errorPipe: Pipe?
+
+    func refreshStatus(command: String) {
+        Task {
+            status = await statusText(command: command)
+        }
+    }
+
+    func start(command: String) {
+        guard !isSigningIn else { return }
+        output = "Opening browser for Claude sign-in...\n"
+        status = "Waiting for sign-in"
+        isSigningIn = true
+
+        do {
+            let executable = try ClaudeCodeCLIService.resolvedExecutableURL(for: command)
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = ["auth", "login"]
+            process.environment = ProcessInfo.processInfo.environment
+
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+            self.process = process
+            self.outputPipe = outputPipe
+            self.errorPipe = errorPipe
+
+            installReader(for: outputPipe)
+            installReader(for: errorPipe)
+
+            process.terminationHandler = { [weak self] _ in
+                Task { @MainActor in
+                    self?.finish(command: command)
+                }
+            }
+
+            try process.run()
+        } catch {
+            isSigningIn = false
+            status = error.localizedDescription
+            output += "\n\(error.localizedDescription)"
+        }
+    }
+
+    func cancel() {
+        process?.terminate()
+        cleanupProcess()
+        isSigningIn = false
+        status = "Sign-in cancelled"
+        output += "\nSign-in cancelled."
+    }
+
+    private func installReader(for pipe: Pipe) {
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            Task { @MainActor in
+                self?.append(chunk)
+            }
+        }
+    }
+
+    private func append(_ chunk: String) {
+        output += stripANSI(chunk)
+    }
+
+    private func finish(command: String) {
+        cleanupProcess()
+        isSigningIn = false
+        Task {
+            status = await statusText(command: command)
+        }
+    }
+
+    private func cleanupProcess() {
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        errorPipe?.fileHandleForReading.readabilityHandler = nil
+        process = nil
+        outputPipe = nil
+        errorPipe = nil
+    }
+
+    private func statusText(command: String) async -> String {
+        await Task.detached {
+            do {
+                let executable = try ClaudeCodeCLIService.resolvedExecutableURL(for: command)
+                let process = Process()
+                process.executableURL = executable
+                process.arguments = ["auth", "status"]
+                process.environment = ProcessInfo.processInfo.environment
+
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let text = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return text?.isEmpty == false ? stripANSI(text ?? "") : "Not signed in"
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
+    }
+}
+
+private func stripANSI(_ text: String) -> String {
+    text.replacingOccurrences(
+        of: "\u{001B}\\[[0-9;?]*[ -/]*[@-~]",
+        with: "",
+        options: .regularExpression
+    )
+}
