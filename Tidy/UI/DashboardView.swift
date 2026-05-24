@@ -335,6 +335,8 @@ struct HomeView: View {
             hotkeyRow(label: "Tidy selected text", combo: "⌃⌥G")
             Divider().opacity(0.5)
             hotkeyRow(label: "Open clipboard palette", combo: "⌃⌥V")
+            Divider().opacity(0.5)
+            hotkeyRow(label: "Ask AI anything", combo: "⌃⌥J")
         }
         .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
