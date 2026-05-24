@@ -19,8 +19,13 @@ final class AskAIModel: ObservableObject {
 final class AskAIController {
     private let model = AskAIModel()
     private let service = AskAIService()
+    private let requestLogStore: AIRequestLogStore
     private var panel: NSPanel?
     private var eventMonitor: Any?
+
+    init(requestLogStore: AIRequestLogStore) {
+        self.requestLogStore = requestLogStore
+    }
 
     func toggle() {
         if panel?.isVisible == true {
@@ -89,7 +94,7 @@ final class AskAIController {
 
         Task {
             do {
-                let answer = try await service.ask(question, history: history, context: context)
+                let answer = try await service.ask(question, history: history, context: context, logStore: requestLogStore)
                 model.messages.append(AskAIMessage(role: .assistant, content: answer))
             } catch {
                 model.errorMessage = error.localizedDescription
