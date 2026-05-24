@@ -124,6 +124,8 @@ struct DashboardView: View {
                 case .settings:
                     SettingsView()
                         .environmentObject(appState)
+                        .environmentObject(appState.correctionLogStore)
+                        .environmentObject(appState.clipboardService)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
