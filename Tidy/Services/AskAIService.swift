@@ -212,9 +212,12 @@ struct AskAIService {
     func ask(_ question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
 
-        // codexCLI is handled before the switch because it needs special stdin-based invocation
+        // CLI-based providers are handled before the switch (special prompt-based invocation)
         if providerID == .codexCLI {
             return try await askCodexCLI(question: question, history: history, context: context)
+        }
+        if providerID == .claudeCLI {
+            return try await askClaudeCLI(question: question, history: history, context: context)
         }
 
         let messages = buildMessages(question: question, history: history, context: context)
@@ -230,10 +233,7 @@ struct AskAIService {
             return try await askOpenCode(messages: messages)
         case .ollama:
             return try await askOllama(messages: messages)
-        case .languageTool, .codexCLI:
-            throw AskAIError.providerUnavailable
-        case .claudeCLI:
-            // TODO: Replace with askClaudeCLI once ClaudeCLIService is implemented (Task N)
+        case .languageTool, .codexCLI, .claudeCLI:
             throw AskAIError.providerUnavailable
         }
     }
@@ -442,6 +442,35 @@ struct AskAIService {
             timeout: 300
         )
         .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !answer.isEmpty else { throw AskAIError.emptyAnswer }
+        return answer
+    }
+
+    private func askClaudeCLI(question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
+        let recentHistory = history.suffix(8)
+            .map { "\($0.role.rawValue.uppercased()):\n\($0.content)" }
+            .joined(separator: "\n\n")
+        let folderList = context.folderURLs
+            .map(\.path)
+            .joined(separator: "\n")
+
+        let prompt = """
+        You are an AI assistant running inside Tidy.
+        Answer the user's question concisely using Markdown. Cite relative file paths when helpful.
+
+        Selected folders:
+        \(folderList.isEmpty ? "(none)" : folderList)
+
+        Conversation so far:
+        \(recentHistory.isEmpty ? "(none)" : recentHistory)
+
+        User question:
+        \(question)
+        """
+
+        let answer = try await ClaudeCodeCLIService.run(prompt: prompt, timeout: 300)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !answer.isEmpty else { throw AskAIError.emptyAnswer }
         return answer

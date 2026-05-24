@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var keyValues: [String: String] = [:]
     @State private var statusMessage   = ""
     @State private var selectedTab     = SettingsTab.general
+    @State private var claudeAuthCode  = ""
     @StateObject private var codexLogin = CodexLoginController()
     @StateObject private var claudeLogin = ClaudeLoginController()
 
@@ -351,7 +352,7 @@ struct SettingsView: View {
                                     Button("Cancel") { claudeLogin.cancel() }
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
-                                } else {
+                                } else if !claudeLogin.isLoggedIn {
                                     Button("Sign in to Claude") {
                                         claudeLogin.start(command: claudeCLIPath)
                                     }
@@ -368,6 +369,24 @@ struct SettingsView: View {
                                     .padding(10)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+
+                            if claudeLogin.awaitingCode {
+                                HStack(spacing: 8) {
+                                    TextField("Paste authentication code here", text: $claudeAuthCode)
+                                        .textFieldStyle(.roundedBorder)
+                                        .onSubmit {
+                                            claudeLogin.submitAuthCode(claudeAuthCode)
+                                            claudeAuthCode = ""
+                                        }
+                                    Button("Submit") {
+                                        claudeLogin.submitAuthCode(claudeAuthCode)
+                                        claudeAuthCode = ""
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(claudeAuthCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                                }
                             }
                         }
                         .padding(.horizontal, 14)
