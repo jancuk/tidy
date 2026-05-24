@@ -6,17 +6,23 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.grammarProvider)     private var grammarProvider    = GrammarProviderID.gemini.rawValue
     @AppStorage(AppDefaults.grammarHotkey)       private var grammarHotkey      = Hotkey.grammarDefault.displayValue
     @AppStorage(AppDefaults.clipboardHotkey)     private var clipboardHotkey    = Hotkey.clipboardDefault.displayValue
+    @AppStorage(AppDefaults.askAIHotkey)         private var askAIHotkey        = Hotkey.askAIDefault.displayValue
     @AppStorage(AppDefaults.clipboardMaxEntries) private var maxEntries         = 200
     @AppStorage(AppDefaults.clipboardMaxAgeDays) private var maxAgeDays         = 7
     @AppStorage(AppDefaults.openCodeModel)       private var openCodeModel      = "deepseek-v4-flash-free"
     @AppStorage(AppDefaults.ollamaBaseURL)       private var ollamaBaseURL      = "http://localhost:11434"
     @AppStorage(AppDefaults.ollamaModel)         private var ollamaModel        = "gnokit/improve-grammar"
+    @AppStorage(AppDefaults.codexCLIPath)        private var codexCLIPath       = "codex"
+    @AppStorage(AppDefaults.codexCLIModel)       private var codexCLIModel      = ""
+    @AppStorage(AppDefaults.claudeCLIPath)       private var claudeCLIPath      = "claude"
     @AppStorage(AppDefaults.appearanceMode)      private var appearanceMode     = "system"
 
     @State private var launchAtLogin   = false
     @State private var keyValues: [String: String] = [:]
     @State private var statusMessage   = ""
     @State private var selectedTab     = SettingsTab.general
+    @StateObject private var codexLogin = CodexLoginController()
+    @StateObject private var claudeLogin = ClaudeLoginController()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +35,8 @@ struct SettingsView: View {
         .onAppear {
             launchAtLogin = appState.launchAtLoginEnabled
             loadKeychainValues()
+            codexLogin.refreshStatus(command: codexCLIPath)
+            claudeLogin.refreshStatus(command: claudeCLIPath)
         }
     }
 
@@ -50,7 +58,7 @@ struct SettingsView: View {
 
     enum SettingsTab: String, CaseIterable {
         case general  = "General"
-        case grammar  = "Grammar"
+        case model    = "Model"
         case clipboard = "Clipboard"
         case hotkeys  = "Hotkeys"
     }
@@ -91,7 +99,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 switch selectedTab {
                 case .general:   generalContent
-                case .grammar:   grammarContent
+                case .model:     modelContent
                 case .clipboard: clipboardContent
                 case .hotkeys:   hotkeysContent
                 }
@@ -170,11 +178,11 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Grammar
+    // MARK: Model
 
-    private var grammarContent: some View {
+    private var modelContent: some View {
         VStack(alignment: .leading, spacing: 20) {
-            settingsSection(title: "Provider") {
+            settingsSection(title: "Model Provider") {
                 settingsGroup {
                     HStack {
                         Text("Provider")
@@ -250,6 +258,126 @@ struct SettingsView: View {
                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 }
             }
+
+            if grammarProvider == GrammarProviderID.codexCLI.rawValue {
+                settingsSection(title: "Codex CLI") {
+                    settingsGroup {
+                        settingsTextRow(label: "Command", binding: $codexCLIPath, prompt: "codex or /path/to/codex")
+                        Divider().opacity(0.5)
+                        settingsTextRow(label: "Model", binding: $codexCLIModel, prompt: "optional, e.g. gpt-5.1-codex")
+                        Divider().opacity(0.5)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("OpenAI Codex")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Color(NSColor.labelColor))
+                                    Text(codexLogin.status)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                                }
+                                Spacer()
+                                Button("Check Status") {
+                                    codexLogin.refreshStatus(command: codexCLIPath)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                if codexLogin.isSigningIn {
+                                    Button("Cancel") { codexLogin.cancel() }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                } else {
+                                    Button("Sign in to OpenAI Codex") {
+                                        codexLogin.start(command: codexCLIPath)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                }
+                            }
+
+                            if !codexLogin.output.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if let _ = codexLogin.authURL {
+                                        Button("Open Auth URL") {
+                                            codexLogin.openAuthURL()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+
+                                    Text(codexLogin.output)
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .foregroundStyle(Color(NSColor.labelColor))
+                                        .padding(10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
+                    Text("Uses your existing Codex CLI login/subscription. Ask AI runs Codex in read-only mode from the selected folder.")
+                        .font(.footnote)
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                }
+            }
+
+            if grammarProvider == GrammarProviderID.claudeCLI.rawValue {
+                settingsSection(title: "Claude Code CLI") {
+                    settingsGroup {
+                        settingsTextRow(label: "Command", binding: $claudeCLIPath, prompt: "claude or /path/to/claude")
+                        Divider().opacity(0.5)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Claude (Subscription)")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Color(NSColor.labelColor))
+                                    Text(claudeLogin.status)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                                }
+                                Spacer()
+                                Button("Check Status") {
+                                    claudeLogin.refreshStatus(command: claudeCLIPath)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                if claudeLogin.isSigningIn {
+                                    Button("Cancel") { claudeLogin.cancel() }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                } else {
+                                    Button("Sign in to Claude") {
+                                        claudeLogin.start(command: claudeCLIPath)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                }
+                            }
+
+                            if !claudeLogin.output.isEmpty {
+                                Text(claudeLogin.output)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .foregroundStyle(Color(NSColor.labelColor))
+                                    .padding(10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
+                    Text("Uses your Claude.ai Pro/Max subscription via Claude Code CLI. No API key required.")
+                        .font(.footnote)
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                }
+            }
         }
     }
 
@@ -305,8 +433,10 @@ struct SettingsView: View {
                     settingsTextRow(label: "Tidy selected text", binding: $grammarHotkey, prompt: "control+option+g")
                     Divider().opacity(0.5)
                     settingsTextRow(label: "Clipboard palette", binding: $clipboardHotkey, prompt: "control+option+v")
+                    Divider().opacity(0.5)
+                    settingsTextRow(label: "Ask AI anything", binding: $askAIHotkey, prompt: "control+option+j")
                 }
-                Text("Format: control+option+g or command+shift+v")
+                Text("Format: control+option+j or command+shift+v")
                     .font(.footnote)
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 Button("Apply Hotkeys") { appState.registerHotkeys() }
