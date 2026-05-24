@@ -212,11 +212,12 @@ struct AskAIService {
     func ask(_ question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
 
+        // codexCLI is handled before the switch because it needs special stdin-based invocation
         if providerID == .codexCLI {
             return try await askCodexCLI(question: question, history: history, context: context)
         }
 
-        let messages = try buildMessages(question: question, history: history, context: context)
+        let messages = buildMessages(question: question, history: history, context: context)
 
         switch providerID {
         case .gemini:
@@ -237,7 +238,7 @@ struct AskAIService {
         }
     }
 
-    private func buildMessages(question: String, history: [AskAIMessage], context: AskAIContext) throws -> [ChatMessage] {
+    private func buildMessages(question: String, history: [AskAIMessage], context: AskAIContext) -> [ChatMessage] {
         var messages = [ChatMessage(role: "system", content: systemPrompt(question: question, context: context))]
 
         let recentHistory = history.suffix(8)
