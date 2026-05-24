@@ -249,6 +249,12 @@ struct TidyTests {
         }
     }
 
+    @Test func grammarFactoryReturnsClaudeCodeCLIProviderForClaudeCLI() {
+        let provider = GrammarProviderFactory.provider(for: .claudeCLI)
+        #expect(provider.id == GrammarProviderID.claudeCLI.rawValue)
+        #expect(provider.displayName == "Claude (Subscription)")
+    }
+
     private func makeTemporaryFolder() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("TidyTests-\(UUID().uuidString)", isDirectory: true)

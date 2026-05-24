@@ -45,8 +45,7 @@ enum GrammarProviderFactory {
         case .codexCLI:
             CodexCLIProvider()
         case .claudeCLI:
-            // TODO: Replace with ClaudeCLIProvider once implemented (Task N)
-            CodexCLIProvider()
+            ClaudeCodeCLIProvider()
         }
     }
 
