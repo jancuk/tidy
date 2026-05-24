@@ -7,6 +7,8 @@
 
 import Foundation
 import Testing
+import AppKit
+import SwiftUI
 @testable import Tidy
 
 struct TidyTests {
@@ -66,6 +68,17 @@ struct TidyTests {
         defaults.registerTidyDefaults()
         #expect(defaults.string(forKey: AppDefaults.appearanceMode) == "system")
         defaults.removePersistentDomain(forName: "test.tidy.appearance")
+    }
+
+    @Test func colorHexParsesRRGGBB() {
+        // Verify the initializer doesn't crash and produces a non-clear color.
+        // We compare the resolved RGB components rather than Color equality.
+        let c = Color(hex: "#2c2c2e")
+        // Convert to NSColor to read components
+        let ns = NSColor(c).usingColorSpace(.sRGB)!
+        #expect(abs(ns.redComponent   - (0x2c / 255.0)) < 0.01)
+        #expect(abs(ns.greenComponent - (0x2c / 255.0)) < 0.01)
+        #expect(abs(ns.blueComponent  - (0x2e / 255.0)) < 0.01)
     }
 
 }
