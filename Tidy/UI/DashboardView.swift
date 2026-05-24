@@ -103,57 +103,40 @@ struct IconRailView: View {
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.openSettings) private var openSettings
     @State private var selection: DashboardSection = .home
-    @State private var accessibilityTrusted: Bool = Permissions.isAccessibilityTrusted
-    private let permissionTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationSplitView {
-            List(DashboardSection.allCases, selection: $selection) { section in
-                NavigationLink(value: section) {
-                    Label(section.title, systemImage: section.systemImage)
+        HStack(spacing: 0) {
+            IconRailView(selection: $selection)
+
+            Group {
+                switch selection {
+                case .home:
+                    HomeView()
+                case .clipboard:
+                    ClipboardListView()
+                        .environmentObject(appState.clipboardService)
+                case .developerTools:
+                    DeveloperToolsView()
+                case .correctionLog:
+                    CorrectionLogView()
+                case .settings:
+                    SettingsView()
+                        .environmentObject(appState)
                 }
             }
-            .listStyle(.sidebar)
-            .frame(minWidth: 200)
-            .navigationTitle("Tidy")
-        } detail: {
-            switch selection {
-            case .home:
-                HomeView(accessibilityTrusted: $accessibilityTrusted)
-            case .developerTools:
-                DeveloperToolsView()
-            case .clipboard:
-                ClipboardListView()
-                    .environmentObject(appState.clipboardService)
-            case .correctionLog:
-                CorrectionLogView()
-            case .settings:
-                Text("Settings")
-                    .navigationTitle("Settings")
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onReceive(permissionTimer) { _ in
-            accessibilityTrusted = Permissions.isAccessibilityTrusted
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    openSettings()
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-            }
-        }
+        .background(Color(NSColor.windowBackgroundColor))
     }
 }
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
-    @Binding var accessibilityTrusted: Bool
+    @State private var accessibilityTrusted: Bool = Permissions.isAccessibilityTrusted
     @AppStorage(AppDefaults.autoSuggestEnabled) private var autoSuggestEnabled: Bool = true
     @AppStorage(AppDefaults.grammarProvider) private var grammarProvider = GrammarProviderID.gemini.rawValue
+    private let permissionTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
@@ -174,6 +157,9 @@ struct HomeView: View {
         }
         .background(Color(NSColor.windowBackgroundColor))
         .navigationTitle("Home")
+        .onReceive(permissionTimer) { _ in
+            accessibilityTrusted = Permissions.isAccessibilityTrusted
+        }
     }
 
     private var header: some View {
