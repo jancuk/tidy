@@ -8,6 +8,7 @@ struct Hotkey: Equatable {
 
     static let grammarDefault = Hotkey(keyCode: UInt32(kVK_ANSI_G), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+g")
     static let clipboardDefault = Hotkey(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+v")
+    static let askAIDefault = Hotkey(keyCode: UInt32(kVK_ANSI_J), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+j")
 
     static func parse(_ rawValue: String, fallback: Hotkey) -> Hotkey {
         let pieces = rawValue
@@ -94,6 +95,7 @@ struct Hotkey: Equatable {
 enum AppDefaults {
     static let grammarHotkey = "grammarHotkey"
     static let clipboardHotkey = "clipboardHotkey"
+    static let askAIHotkey = "askAIHotkey"
     static let grammarProvider = "grammarProvider"
     static let clipboardMaxEntries = "clipboardMaxEntries"
     static let clipboardMaxAgeDays = "clipboardMaxAgeDays"
@@ -102,6 +104,9 @@ enum AppDefaults {
     static let openCodeModel = "openCodeModel"
     static let ollamaBaseURL = "ollamaBaseURL"
     static let ollamaModel = "ollamaModel"
+    static let codexCLIPath = "codexCLIPath"
+    static let codexCLIModel = "codexCLIModel"
+    static let claudeCLIPath = "claudeCLIPath"
     static let appearanceMode = "appearanceMode"
 }
 
@@ -110,6 +115,7 @@ extension UserDefaults {
         register(defaults: [
             AppDefaults.grammarHotkey: Hotkey.grammarDefault.displayValue,
             AppDefaults.clipboardHotkey: Hotkey.clipboardDefault.displayValue,
+            AppDefaults.askAIHotkey: Hotkey.askAIDefault.displayValue,
             AppDefaults.grammarProvider: GrammarProviderID.gemini.rawValue,
             AppDefaults.clipboardMaxEntries: 200,
             AppDefaults.clipboardMaxAgeDays: 7,
@@ -118,6 +124,9 @@ extension UserDefaults {
             AppDefaults.openCodeModel: "deepseek-v4-flash-free",
             AppDefaults.ollamaBaseURL: "http://localhost:11434",
             AppDefaults.ollamaModel: "gnokit/improve-grammar",
+            AppDefaults.codexCLIPath: "codex",
+            AppDefaults.codexCLIModel: "",
+            AppDefaults.claudeCLIPath: "claude",
             AppDefaults.appearanceMode: "system"
         ])
     }

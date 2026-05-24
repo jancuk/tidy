@@ -42,6 +42,11 @@ enum GrammarProviderFactory {
             OpenCodeProvider()
         case .ollama:
             OllamaProvider()
+        case .codexCLI:
+            CodexCLIProvider()
+        case .claudeCLI:
+            // TODO: Replace with ClaudeCLIProvider once implemented (Task N)
+            CodexCLIProvider()
         }
     }
 

@@ -63,6 +63,78 @@ struct TidyTests {
         #expect(AppDefaults.appearanceMode == "appearanceMode")
     }
 
+    @Test func askAIHotkeyDefaultIsControlOptionJ() {
+        let defaults = UserDefaults(suiteName: "test.tidy.askai")!
+        defaults.registerTidyDefaults()
+        #expect(defaults.string(forKey: AppDefaults.askAIHotkey) == "control+option+j")
+        defaults.removePersistentDomain(forName: "test.tidy.askai")
+    }
+
+    @Test func askAIMentionParserFindsMCPSources() {
+        let sources = AskAIMentionParser.mcpSources(in: "@mcp-slack summarize history and @mcp-jira show dashboard")
+
+        #expect(sources == [.slack, .jira])
+    }
+
+    @Test func askAIMentionParserFindsMultipleFolders() {
+        let folders = [
+            AskAIFolderSource(alias: "Tidy", url: URL(fileURLWithPath: "/tmp/Tidy")),
+            AskAIFolderSource(alias: "code", url: URL(fileURLWithPath: "/tmp/code"))
+        ]
+
+        let parsed = AskAIMentionParser.folderSources(in: "compare @!Tidy and @!code", availableFolders: folders)
+
+        #expect(parsed.map(\.alias) == ["Tidy", "code"])
+    }
+
+    @Test func askAIMentionParserDetectsCurrentMentionMode() {
+        #expect(AskAIMentionParser.currentMention(in: "show @") == .mcp(""))
+        #expect(AskAIMentionParser.currentMention(in: "ask @!Ti") == .folder("Ti"))
+        #expect(AskAIMentionParser.currentMention(in: "ask @!Tidy ") == nil)
+    }
+
+    @Test func folderContextIncludesProjectSignalsAndMap() throws {
+        let root = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try write("# Demo\n\nA small app.", to: root.appendingPathComponent("README.md"))
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("Demo.xcodeproj", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try write("// project", to: root.appendingPathComponent("Demo.xcodeproj/project.pbxproj"))
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("Demo", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try write("struct DemoApp {}", to: root.appendingPathComponent("Demo/DemoApp.swift"))
+
+        let context = FolderContextBuilder.context(for: [root], question: "what is this project?")
+
+        #expect(context.contains("Detected project signals: README.md, Demo Xcode project"))
+        #expect(context.contains("Git context:"))
+        #expect(context.contains("Project map:"))
+        #expect(context.contains("Code symbol index:"))
+        #expect(context.contains("Demo/DemoApp.swift: struct DemoApp"))
+        #expect(context.contains("README.md"))
+        #expect(context.contains("Demo/DemoApp.swift"))
+    }
+
+    @Test func folderContextPrioritizesQuestionRelevantFiles() throws {
+        let root = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try write("# Demo", to: root.appendingPathComponent("README.md"))
+        try write("final class BillingCoordinator {}", to: root.appendingPathComponent("BillingCoordinator.swift"))
+        try write("final class ClipboardPaletteController {}", to: root.appendingPathComponent("ClipboardPaletteController.swift"))
+
+        let context = FolderContextBuilder.context(for: [root], question: "where is clipboard handled?")
+        let clipboardIndex = try #require(context.range(of: "--- ClipboardPaletteController.swift ---")?.lowerBound)
+        let billingIndex = try #require(context.range(of: "--- BillingCoordinator.swift ---")?.lowerBound)
+
+        #expect(clipboardIndex < billingIndex)
+    }
+
     @Test func appearanceModeDefaultIsSystem() {
         let defaults = UserDefaults(suiteName: "test.tidy.appearance")!
         defaults.registerTidyDefaults()
@@ -150,6 +222,19 @@ struct TidyTests {
 
         #expect(FileManager.default.fileExists(atPath: archive.path))
         #expect(!FileManager.default.fileExists(atPath: moves[0].finalDestinationPath))
+    }
+
+    @Test func claudeCLIProviderIDHasExpectedProperties() {
+        #expect(GrammarProviderID.claudeCLI.rawValue == "claude-cli")
+        #expect(GrammarProviderID.claudeCLI.displayName == "Claude (Subscription)")
+        #expect(GrammarProviderID.claudeCLI.requiresAPIKey == false)
+    }
+
+    @Test func claudeCLIPathDefaultIsClaude() {
+        let defaults = UserDefaults(suiteName: "test.tidy.claudecli")!
+        defaults.registerTidyDefaults()
+        #expect(defaults.string(forKey: AppDefaults.claudeCLIPath) == "claude")
+        defaults.removePersistentDomain(forName: "test.tidy.claudecli")
     }
 
     private func makeTemporaryFolder() throws -> URL {
