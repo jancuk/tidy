@@ -113,6 +113,7 @@ struct DashboardView: View {
                 switch selection {
                 case .home:
                     HomeView()
+                        .environmentObject(appState.correctionLogStore)
                 case .clipboard:
                     ClipboardListView()
                         .environmentObject(appState.clipboardService)
@@ -133,6 +134,7 @@ struct DashboardView: View {
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var correctionLogStore: CorrectionLogStore
     @AppStorage(AppDefaults.autoSuggestEnabled) private var autoSuggestEnabled = true
     @AppStorage(AppDefaults.grammarProvider) private var grammarProvider = GrammarProviderID.gemini.rawValue
     @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted
@@ -258,7 +260,7 @@ struct HomeView: View {
                 )
                 quickChip(
                     icon: "checkmark.rectangle",
-                    count: appState.correctionLogStore.entries.count,
+                    count: correctionLogStore.entries.count,
                     label: "Corrections",
                     subtitle: "Today's log"
                 )
