@@ -106,8 +106,15 @@ final class ClaudeLoginController: ObservableObject {
                 process.standardOutput = pipe
                 process.standardError = pipe
 
+                let finished = DispatchSemaphore(value: 0)
+                process.terminationHandler = { _ in finished.signal() }
+
                 try process.run()
-                process.waitUntilExit()
+
+                guard finished.wait(timeout: .now() + 15) == .success else {
+                    process.terminate()
+                    return "Status check timed out"
+                }
 
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 let text = String(data: data, encoding: .utf8)?
