@@ -133,26 +133,22 @@ struct DashboardView: View {
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var accessibilityTrusted: Bool = Permissions.isAccessibilityTrusted
-    @AppStorage(AppDefaults.autoSuggestEnabled) private var autoSuggestEnabled: Bool = true
+    @AppStorage(AppDefaults.autoSuggestEnabled) private var autoSuggestEnabled = true
     @AppStorage(AppDefaults.grammarProvider) private var grammarProvider = GrammarProviderID.gemini.rawValue
-    private let permissionTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted
+    private let permissionTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-
-                statusCard
-
-                actionsGrid
-
+            VStack(alignment: .leading, spacing: 16) {
+                heroCard
+                statusRow
+                quickAccessSection
                 hotkeysCard
-
                 Spacer(minLength: 12)
             }
-            .padding(24)
-            .frame(maxWidth: 760)
+            .padding(22)
+            .frame(maxWidth: 700)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Color(NSColor.windowBackgroundColor))
@@ -161,187 +157,178 @@ struct HomeView: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text("Tidy")
-                    .font(.system(size: 32, weight: .bold))
-            }
-            Text("Your menu bar companion for grammar correction and clipboard history.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var heroGradient: LinearGradient {
+        colorScheme == .dark
+            ? LinearGradient(
+                colors: [Color(hex: "#48484a"), Color(hex: "#6e6e73")],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+            : LinearGradient(
+                colors: [Color(hex: "#2c2c2e"), Color(hex: "#505050")],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Status")
-                .font(.headline)
-
-            HStack(spacing: 10) {
-                statusBadge(
-                    title: accessibilityTrusted ? "Accessibility" : "Accessibility needed",
-                    systemImage: accessibilityTrusted ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
-                    tint: accessibilityTrusted ? .green : .orange
-                )
-
-                statusBadge(
-                    title: autoSuggestEnabled ? "Auto-suggest on" : "Auto-suggest off",
-                    systemImage: autoSuggestEnabled ? "wand.and.sparkles" : "wand.and.sparkles.inverse",
-                    tint: autoSuggestEnabled ? .blue : .secondary
-                )
-
-                statusBadge(
-                    title: "Provider: \(providerDisplayName)",
-                    systemImage: "brain.head.profile",
-                    tint: .purple
-                )
+    private var heroCard: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.white.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.white)
             }
 
-            if !accessibilityTrusted {
-                Button("Open Accessibility Settings") {
-                    Permissions.openAccessibilitySettings()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Tidy Selected Text")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                Text("Select text in any app, then press the hotkey to fix grammar instantly.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .lineLimit(2)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("⌃⌥G")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(.white.opacity(0.2), lineWidth: 0.5)
+                )
         }
         .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(heroGradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .shadow(color: .black.opacity(0.22), radius: 7, y: 3)
     }
 
-    private func statusBadge(title: String, systemImage: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
+    private var statusRow: some View {
+        HStack(spacing: 7) {
+            statusBadge(
+                title: accessibilityTrusted ? "Accessibility on" : "Accessibility needed",
+                tint: accessibilityTrusted ? .green : .orange
+            )
+            statusBadge(title: providerDisplayName, tint: .green)
+            statusBadge(
+                title: autoSuggestEnabled ? "Auto-suggest on" : "Auto-suggest off",
+                tint: autoSuggestEnabled ? .green : .orange
+            )
+        }
+    }
+
+    private func statusBadge(title: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(tint.opacity(0.12), in: Capsule())
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.1), in: Capsule())
     }
 
-    private var actionsGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Quick actions")
-                .font(.headline)
+    private var quickAccessSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Quick Access")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                .textCase(.uppercase)
+                .kerning(0.5)
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 12),
-                GridItem(.flexible(), spacing: 12)
-            ], spacing: 12) {
-                ActionCard(
-                    title: "Tidy Clipboard Text",
-                    subtitle: "Fix grammar of whatever is on your clipboard now.",
-                    systemImage: "sparkles"
-                ) {
-                    appState.tidyClipboardText()
-                }
-
-                ActionCard(
-                    title: "Open Clipboard Palette",
-                    subtitle: "Search and paste from your clipboard history.",
-                    systemImage: "doc.on.clipboard"
-                ) {
-                    appState.openPalette()
-                }
-
-                ActionCard(
-                    title: autoSuggestEnabled ? "Disable Auto-suggest" : "Enable Auto-suggest",
-                    subtitle: "Watch focused fields and offer corrections after a pause.",
-                    systemImage: "wand.and.sparkles"
-                ) {
-                    autoSuggestEnabled.toggle()
-                }
-
-                ActionCard(
-                    title: "Tidy Selected Text",
-                    subtitle: "Press ⌃⌥G after selecting text in any app.",
-                    systemImage: "textformat"
-                ) {
-                    // No-op: this is a reminder card
-                }
+            HStack(spacing: 10) {
+                quickChip(
+                    icon: "doc.on.clipboard",
+                    count: appState.clipboardService.entries.count,
+                    label: "Clipboard",
+                    subtitle: "⌃⌥V to open palette"
+                )
+                quickChip(
+                    icon: "chevron.left.forwardslash.chevron.right",
+                    count: DeveloperTool.allCases.count,
+                    label: "Dev Tools",
+                    subtitle: "JSON, JWT, Diff…"
+                )
+                quickChip(
+                    icon: "checkmark.rectangle",
+                    count: appState.correctionLogStore.entries.count,
+                    label: "Corrections",
+                    subtitle: "Today's log"
+                )
             }
         }
+    }
+
+    private func quickChip(icon: String, count: Int, label: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                Spacer()
+                Text("\(count)")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color(NSColor.labelColor))
+            }
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color(NSColor.labelColor))
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
+        )
     }
 
     private var hotkeysCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Hotkeys")
-                .font(.headline)
-            VStack(spacing: 0) {
-                hotkeyRow(label: "Tidy selected text", combo: "⌃⌥G")
-                Divider()
-                hotkeyRow(label: "Open clipboard palette", combo: "⌃⌥V")
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        VStack(spacing: 0) {
+            hotkeyRow(label: "Tidy selected text", combo: "⌃⌥G")
+            Divider().opacity(0.5)
+            hotkeyRow(label: "Open clipboard palette", combo: "⌃⌥V")
         }
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
+        )
     }
 
     private func hotkeyRow(label: String, combo: String) -> some View {
         HStack {
             Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Color(NSColor.labelColor))
             Spacer()
             Text(combo)
-                .font(.system(.body, design: .monospaced).weight(.semibold))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Color(NSColor.labelColor))
                 .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.background, in: RoundedRectangle(cornerRadius: 6))
+                .padding(.vertical, 3)
+                .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6).stroke(.separator, lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
                 )
         }
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 
     private var providerDisplayName: String {
         GrammarProviderID(rawValue: grammarProvider)?.displayName ?? grammarProvider
-    }
-}
-
-private struct ActionCard: View {
-    let title: String
-    let subtitle: String
-    let systemImage: String
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isHovered ? Color.accentColor.opacity(0.10) : Color.gray.opacity(0.12))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.separator, lineWidth: 0.5)
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
     }
 }
 
