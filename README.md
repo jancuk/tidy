@@ -16,6 +16,7 @@
 
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
 - **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
+- **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
 - **Light / Dark / System** appearance, user-selectable from Settings.
 - **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, Ollama (local), OpenCode, LanguageTool.
@@ -85,11 +86,11 @@ Tidy needs Accessibility access to read selected text and paste the corrected ve
 
 Tidy's long-term direction is a personal Mac assistant for cleaning up text, files, and daily developer context.
 
-### Next: File Tidy
+### File Tidy
 
 Help developers clean messy folders like `Downloads` and `Desktop` with a safe, preview-first workflow.
 
-- Scan a selected folder locally.
+- Scan a selected folder locally from the File Tidy sidebar item.
 - Group files by type, date, project hint, and usage pattern.
 - Propose moves such as screenshots to `Pictures/Screenshots`, installers to `Downloads/Installers`, archives to `Archives`, and documents to useful folders.
 - Detect duplicate files, large stale files, build artifacts, old logs, and temporary exports.
@@ -97,7 +98,7 @@ Help developers clean messy folders like `Downloads` and `Desktop` with a safe, 
 - Let the user approve selected changes.
 - Keep an undo log for moved or renamed files.
 
-The first version should be rule-based and local-only. AI suggestions can come later for naming, folder recommendations, and explanations.
+The first version is rule-based and local-only. AI suggestions can come later for naming, folder recommendations, and explanations.
 
 ### Developer Desk Cleanup
 

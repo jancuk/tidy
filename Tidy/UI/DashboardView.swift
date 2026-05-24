@@ -2,6 +2,7 @@ import SwiftUI
 
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
+    case fileTidy
     case clipboard
     case developerTools
     case correctionLog
@@ -12,6 +13,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var title: String {
         switch self {
         case .home:           "Home"
+        case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard History"
         case .developerTools: "Developer Tools"
         case .correctionLog:  "Correction Log"
@@ -22,6 +24,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var systemImage: String {
         switch self {
         case .home:           "house"
+        case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle"
@@ -114,6 +117,8 @@ struct DashboardView: View {
                 case .home:
                     HomeView()
                         .environmentObject(appState.correctionLogStore)
+                case .fileTidy:
+                    FileTidyView()
                 case .clipboard:
                     ClipboardListView()
                         .environmentObject(appState.clipboardService)
@@ -121,6 +126,7 @@ struct DashboardView: View {
                     DeveloperToolsView()
                 case .correctionLog:
                     CorrectionLogView()
+                        .environmentObject(appState.correctionLogStore)
                 case .settings:
                     SettingsView()
                         .environmentObject(appState)
@@ -213,16 +219,37 @@ struct HomeView: View {
 
     private var statusRow: some View {
         HStack(spacing: 7) {
-            statusBadge(
-                title: accessibilityTrusted ? "Accessibility on" : "Accessibility needed",
-                tint: accessibilityTrusted ? .green : .orange
-            )
+            if accessibilityTrusted {
+                statusBadge(title: "Accessibility on", tint: .green)
+            } else {
+                Button(action: openAccessibilityConfiguration) {
+                    statusBadge(title: "Accessibility needed", tint: .orange)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Open Accessibility settings")
+
+                Button("Open Settings", action: openAccessibilityConfiguration)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                Button("Restart Tidy") {
+                    appState.restartApp()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
             statusBadge(title: providerDisplayName, tint: .green)
             statusBadge(
                 title: autoSuggestEnabled ? "Auto-suggest on" : "Auto-suggest off",
                 tint: autoSuggestEnabled ? .green : .orange
             )
         }
+    }
+
+    private func openAccessibilityConfiguration() {
+        accessibilityTrusted = Permissions.requestAccessibilityIfNeeded()
+        Permissions.openAccessibilitySettings()
     }
 
     private func statusBadge(title: String, tint: Color) -> some View {
@@ -259,6 +286,12 @@ struct HomeView: View {
                     count: DeveloperTool.allCases.count,
                     label: "Dev Tools",
                     subtitle: "JSON, JWT, Diff…"
+                )
+                quickChip(
+                    icon: "folder.badge.gearshape",
+                    count: FileTidyCategory.allCases.count,
+                    label: "File Tidy",
+                    subtitle: "Local cleanup rules"
                 )
                 quickChip(
                     icon: "checkmark.rectangle",
@@ -475,7 +508,7 @@ private struct ClipboardRowView: View {
 }
 
 struct CorrectionLogView: View {
-    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var correctionLogStore: CorrectionLogStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -484,16 +517,17 @@ struct CorrectionLogView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color(NSColor.labelColor))
                 Spacer()
-                Button("Clear") { appState.correctionLogStore.clear() }
+                Button("Clear") { correctionLogStore.clear() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .disabled(correctionLogStore.entries.isEmpty)
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
             .padding(.bottom, 10)
             .overlay(alignment: .bottom) { Divider() }
 
-            if appState.correctionLogStore.entries.isEmpty {
+            if correctionLogStore.entries.isEmpty {
                 ContentUnavailableView(
                     "No corrections yet",
                     systemImage: "list.bullet.rectangle",
@@ -501,7 +535,7 @@ struct CorrectionLogView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(appState.correctionLogStore.entries) { entry in
+                List(correctionLogStore.entries) { entry in
                     VStack(alignment: .leading, spacing: 6) {
                         if !entry.original.isEmpty {
                             Text(entry.original)

@@ -85,4 +85,81 @@ struct TidyTests {
         #expect(DashboardSection.allCases.contains(.settings))
     }
 
+    @Test func fileTidyScansRuleBasedSuggestions() throws {
+        let root = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try write("image-data", to: root.appendingPathComponent("Screenshot 2026-05-24 at 10.00.00.png"))
+        try write("installer", to: root.appendingPathComponent("Tool.dmg"))
+        try write("archive", to: root.appendingPathComponent("release.zip"))
+        try write("notes", to: root.appendingPathComponent("Project Notes.pdf"))
+        try write("same", to: root.appendingPathComponent("copy-a.txt"))
+        try write("same", to: root.appendingPathComponent("copy-b.txt"))
+
+        let service = FileTidyService()
+        let result = try service.scan(rootURL: root)
+
+        #expect(result.records.count == 6)
+        #expect(result.proposals.contains { $0.category == .screenshots })
+        #expect(result.proposals.contains { $0.category == .installers })
+        #expect(result.proposals.contains { $0.category == .archives })
+        #expect(result.proposals.contains { $0.category == .documents })
+        #expect(result.proposals.contains { $0.category == .duplicates && $0.isRecommendedByDefault == false })
+        #expect(result.typeGroups.contains { $0.title == FileTidyCategory.documents.title })
+        #expect(result.usageGroups.contains { $0.title == "Downloaded installer" })
+    }
+
+    @Test func fileTidyDetectsLargeStaleAndBuildArtifacts() throws {
+        let root = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let stale = root.appendingPathComponent("old-export.mov")
+        try write("large enough", to: stale)
+        let oldDate = Date(timeIntervalSinceNow: -10 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: stale.path)
+
+        let build = root.appendingPathComponent("node_modules", isDirectory: true)
+        try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+        try write("module", to: build.appendingPathComponent("index.js"))
+
+        let service = FileTidyService(options: FileTidyScanOptions(largeFileThreshold: 4, staleAfterDays: 1))
+        let result = try service.scan(rootURL: root)
+
+        #expect(result.proposals.contains { $0.category == .largeStale && $0.risk == .review })
+        #expect(result.proposals.contains { $0.category == .buildArtifacts && $0.risk == .high })
+    }
+
+    @Test func fileTidyAppliesMovesAndCanUndo() throws {
+        let root = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let archive = root.appendingPathComponent("sample.zip")
+        try write("archive", to: archive)
+
+        let service = FileTidyService()
+        let result = try service.scan(rootURL: root)
+        let proposal = try #require(result.proposals.first { $0.category == .archives })
+
+        let moves = try service.apply([proposal], rootURL: root)
+        #expect(moves.count == 1)
+        #expect(FileManager.default.fileExists(atPath: moves[0].finalDestinationPath))
+        #expect(!FileManager.default.fileExists(atPath: archive.path))
+
+        let session = FileTidyUndoSession(id: UUID(), rootPath: root.path, createdAt: Date(), moves: moves)
+        try service.undo(session)
+
+        #expect(FileManager.default.fileExists(atPath: archive.path))
+        #expect(!FileManager.default.fileExists(atPath: moves[0].finalDestinationPath))
+    }
+
+    private func makeTemporaryFolder() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TidyTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func write(_ string: String, to url: URL) throws {
+        try Data(string.utf8).write(to: url)
+    }
 }
