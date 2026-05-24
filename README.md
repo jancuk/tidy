@@ -17,9 +17,29 @@ Tidy is a macOS productivity companion for cleaning up selected text, keeping a 
 - Accessibility permission for reading and replacing selected text.
 - Network access for cloud grammar providers. Ollama and LanguageTool can be used locally depending on your configuration.
 
-## Build
+## Getting started
 
-Open `Tidy.xcodeproj` in Xcode and run the `Tidy` target.
+### 1. Clone
+
+```sh
+git clone https://github.com/your-username/Tidy.git
+cd Tidy
+```
+
+### 2. Set your Team ID
+
+Create a `Local.xcconfig` file in the repo root (it is gitignored):
+
+```
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+```
+
+Find your Team ID at [developer.apple.com/account](https://developer.apple.com/account) → Membership Details.  
+If you just want to run it without code signing, leave it blank — Xcode will prompt you to choose a team on first build.
+
+### 3. Build and run
+
+Open `Tidy.xcodeproj` in Xcode, select the **Tidy** scheme with **My Mac** as destination, and press `⌘R`.
 
 From the command line:
 
@@ -33,16 +53,22 @@ Run unit tests:
 xcodebuild test -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' -only-testing:TidyTests
 ```
 
-## Configuration
+### 4. Add an API key
 
-Open Tidy settings from the menu bar app.
+Open Settings (gear icon in the sidebar) → **Grammar** tab → paste your API key and click **Save API Keys**.
 
-- Choose a grammar provider.
-- Save provider API keys in the Grammar settings tab.
-- Configure Ollama base URL and model if using a local model.
-- Adjust clipboard retention and hotkeys.
+| Provider | Where to get a key |
+|---|---|
+| Gemini Flash | [aistudio.google.com](https://aistudio.google.com) — free tier available |
+| OpenAI | [platform.openai.com](https://platform.openai.com) |
+| Anthropic | [console.anthropic.com](https://console.anthropic.com) |
+| Ollama | No key needed — runs locally |
 
-Gemini also checks `VITE_GEMINI_API_KEY` or `GEMINI_API_KEY` from the app environment before falling back to the saved Keychain value.
+Gemini also checks the `GEMINI_API_KEY` environment variable before falling back to the saved Keychain value.
+
+### 5. Grant Accessibility permission
+
+Tidy needs Accessibility access to read selected text and paste the corrected version back. macOS will prompt on first use, or go to **System Settings → Privacy & Security → Accessibility**.
 
 ## Roadmap
 
@@ -105,4 +131,4 @@ Do not commit:
 
 ## License
 
-No license has been added yet. Add one before accepting external contributions.
+MIT — see [LICENSE](LICENSE).
