@@ -15,6 +15,7 @@
 ## Features
 
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
+- **Ask AI** — press `⌃⌥J` for a Quick AI chat panel with source slots for MCP, llm-wiki, and local folder context.
 - **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
 - **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.

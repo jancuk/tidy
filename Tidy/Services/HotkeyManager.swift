@@ -5,12 +5,14 @@ final class HotkeyManager {
     enum Action: UInt32 {
         case grammar = 1
         case clipboard = 2
+        case askAI = 3
     }
 
     private var registeredHotkeys: [EventHotKeyRef?] = []
     private var handler: EventHandlerRef?
     var onGrammar: (() -> Void)?
     var onClipboard: (() -> Void)?
+    var onAskAI: (() -> Void)?
 
     init() {
         installHandler()
@@ -23,10 +25,11 @@ final class HotkeyManager {
         }
     }
 
-    func register(grammar: Hotkey, clipboard: Hotkey) {
+    func register(grammar: Hotkey, clipboard: Hotkey, askAI: Hotkey) {
         unregisterAll()
         register(hotkey: grammar, action: .grammar)
         register(hotkey: clipboard, action: .clipboard)
+        register(hotkey: askAI, action: .askAI)
     }
 
     private func installHandler() {
@@ -51,6 +54,8 @@ final class HotkeyManager {
                     manager.onGrammar?()
                 case Action.clipboard.rawValue:
                     manager.onClipboard?()
+                case Action.askAI.rawValue:
+                    manager.onAskAI?()
                 default:
                     break
                 }
@@ -61,7 +66,7 @@ final class HotkeyManager {
 
     private func register(hotkey: Hotkey, action: Action) {
         var hotkeyRef: EventHotKeyRef?
-        var hotkeyID = EventHotKeyID(signature: fourCharCode("Tidy"), id: action.rawValue)
+        let hotkeyID = EventHotKeyID(signature: fourCharCode("Tidy"), id: action.rawValue)
         let status = RegisterEventHotKey(
             hotkey.keyCode,
             hotkey.carbonModifiers,

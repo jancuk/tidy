@@ -24,6 +24,12 @@ struct TidyApp: App {
 
         MenuBarExtra("Tidy", systemImage: "sparkles") {
             Button {
+                appState.openAskAI()
+            } label: {
+                Label("Ask AI Anything", systemImage: "text.bubble")
+            }
+
+            Button {
                 appState.openPalette()
             } label: {
                 Label("Open Clipboard Palette", systemImage: "doc.on.clipboard")

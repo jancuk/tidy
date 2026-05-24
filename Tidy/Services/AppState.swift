@@ -12,6 +12,7 @@ final class AppState: ObservableObject {
     private let hud = HUDController()
     private let grammarService: GrammarService
     private let paletteController: ClipboardPaletteController
+    private let askAIController: AskAIController
     private let suggestionPopup = SuggestionPopupController()
     private var cancellables: Set<AnyCancellable> = []
 
@@ -21,6 +22,7 @@ final class AppState: ObservableObject {
         correctionLogStore = CorrectionLogStore()
         grammarService = GrammarService(hud: hud, logStore: correctionLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
+        askAIController = AskAIController()
         suggestionMonitor = SuggestionMonitor()
 
         hotkeyManager.onGrammar = { [weak self] in
@@ -28,6 +30,9 @@ final class AppState: ObservableObject {
         }
         hotkeyManager.onClipboard = { [weak self] in
             Task { @MainActor in self?.paletteController.toggle() }
+        }
+        hotkeyManager.onAskAI = { [weak self] in
+            Task { @MainActor in self?.askAIController.toggle() }
         }
 
         suggestionMonitor.onSuggestion = { [weak self] suggestion in
@@ -65,11 +70,16 @@ final class AppState: ObservableObject {
         let defaults = UserDefaults.standard
         let grammar = Hotkey.parse(defaults.string(forKey: AppDefaults.grammarHotkey) ?? "", fallback: .grammarDefault)
         let clipboard = Hotkey.parse(defaults.string(forKey: AppDefaults.clipboardHotkey) ?? "", fallback: .clipboardDefault)
-        hotkeyManager.register(grammar: grammar, clipboard: clipboard)
+        let askAI = Hotkey.parse(defaults.string(forKey: AppDefaults.askAIHotkey) ?? "", fallback: .askAIDefault)
+        hotkeyManager.register(grammar: grammar, clipboard: clipboard, askAI: askAI)
     }
 
     func openPalette() {
         paletteController.show()
+    }
+
+    func openAskAI() {
+        askAIController.show()
     }
 
     func tidyClipboardText() {
