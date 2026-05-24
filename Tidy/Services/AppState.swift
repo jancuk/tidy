@@ -102,6 +102,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    func restartApp() {
+        let appPath = Bundle.main.bundleURL.path.replacingOccurrences(of: "'", with: "'\\''")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 0.5; open '\(appPath)'"]
+        try? process.run()
+        NSApplication.shared.terminate(nil)
+    }
+
     var launchAtLoginEnabled: Bool {
         SMAppService.mainApp.status == .enabled
     }
