@@ -1,14 +1,25 @@
-# Tidy
+<p align="center">
+  <img src=".github/assets/logo.png" width="120" alt="Tidy logo" />
+</p>
 
-Tidy is a macOS productivity companion for cleaning up selected text, keeping a searchable clipboard history, and running small developer text tools from a native SwiftUI menu bar app.
+<h1 align="center">Tidy</h1>
+
+<p align="center">
+  A native macOS app that fixes your grammar with a hotkey, keeps a searchable clipboard history, and bundles developer utilities — all in a clean, focused interface.
+</p>
+
+<p align="center">
+  <img src=".github/assets/screenshot-dark.png" width="720" alt="Tidy dark mode home screen" />
+</p>
 
 ## Features
 
-- Grammar cleanup for selected text with a global hotkey.
-- Clipboard history with search, retention settings, and a paste palette.
-- Developer tools for JSON formatting, JWT decoding, CSV conversion, cron parsing, text diffing, Base64, URL coding, hashes, UUIDs, timestamps, regex testing, and color conversion.
-- Pluggable grammar providers: Gemini, OpenAI, Anthropic, LanguageTool, OpenCode, and local Ollama.
-- API keys stored in macOS Keychain.
+- **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
+- **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
+- **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
+- **Light / Dark / System** appearance, user-selectable from Settings.
+- **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, Ollama (local), OpenCode, LanguageTool.
+- API keys stored securely in macOS Keychain.
 
 ## Requirements
 
