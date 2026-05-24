@@ -156,7 +156,6 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Color(NSColor.windowBackgroundColor))
-        .navigationTitle("Home")
         .onReceive(permissionTimer) { _ in
             accessibilityTrusted = Permissions.isAccessibilityTrusted
         }
@@ -397,7 +396,6 @@ struct ClipboardListView: View {
             }
         }
         .padding(16)
-        .navigationTitle("Clipboard History")
     }
 }
 
@@ -405,7 +403,21 @@ struct CorrectionLogView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Correction Log")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color(NSColor.labelColor))
+                Spacer()
+                Button("Clear") { appState.correctionLogStore.clear() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .overlay(alignment: .bottom) { Divider() }
+
             if appState.correctionLogStore.entries.isEmpty {
                 ContentUnavailableView(
                     "No corrections yet",
@@ -435,15 +447,6 @@ struct CorrectionLogView: View {
                     .padding(.vertical, 4)
                 }
                 .listStyle(.inset)
-            }
-        }
-        .padding(16)
-        .navigationTitle("Correction Log")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button("Clear") {
-                    appState.correctionLogStore.clear()
-                }
             }
         }
     }
