@@ -134,11 +134,11 @@ private struct ToolSidebarRow: View {
                 Image(systemName: tool.systemImage)
                     .font(.system(size: 13))
                     .frame(width: 16)
-                    .foregroundStyle(selectedForeground)
+                    .foregroundStyle(selected ? selectedForeground : Color(NSColor.secondaryLabelColor))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tool.title)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selectedForeground)
+                        .foregroundStyle(selected ? selectedForeground : Color(NSColor.labelColor))
                     Text(tool.subtitle)
                         .font(.system(size: 10))
                         .foregroundStyle(selected ? selectedForeground.opacity(0.7) : Color(NSColor.secondaryLabelColor))
