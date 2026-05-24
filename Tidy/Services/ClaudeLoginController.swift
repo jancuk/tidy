@@ -6,14 +6,19 @@ final class ClaudeLoginController: ObservableObject {
     @Published var output = ""
     @Published var status = "Not checked"
     @Published var isSigningIn = false
+    @Published var awaitingCode = false
+    @Published var isLoggedIn = false
 
     private var process: Process?
     private var outputPipe: Pipe?
     private var errorPipe: Pipe?
+    private var stdinPipe: Pipe?
 
     func refreshStatus(command: String) {
         Task {
-            status = await statusText(command: command)
+            let text = await statusText(command: command)
+            status = text
+            isLoggedIn = text.contains("\"loggedIn\": true")
         }
     }
 
@@ -32,11 +37,14 @@ final class ClaudeLoginController: ObservableObject {
 
             let outputPipe = Pipe()
             let errorPipe = Pipe()
+            let stdinPipe = Pipe()
             process.standardOutput = outputPipe
             process.standardError = errorPipe
+            process.standardInput = stdinPipe
             self.process = process
             self.outputPipe = outputPipe
             self.errorPipe = errorPipe
+            self.stdinPipe = stdinPipe
 
             installReader(for: outputPipe)
             installReader(for: errorPipe)
@@ -73,24 +81,41 @@ final class ClaudeLoginController: ObservableObject {
         }
     }
 
+    func submitAuthCode(_ code: String) {
+        guard let stdinPipe, !code.isEmpty else { return }
+        let line = code + "\n"
+        if let data = line.data(using: .utf8) {
+            stdinPipe.fileHandleForWriting.write(data)
+        }
+        awaitingCode = false
+    }
+
     private func append(_ chunk: String) {
         output += stripANSI(chunk)
+        if output.contains("Paste code here") || output.contains("paste") && output.contains("code") {
+            awaitingCode = true
+        }
     }
 
     private func finish(command: String) {
         cleanupProcess()
         isSigningIn = false
         Task {
-            status = await statusText(command: command)
+            let text = await statusText(command: command)
+            status = text
+            isLoggedIn = text.contains("\"loggedIn\": true")
         }
     }
 
     private func cleanupProcess() {
         outputPipe?.fileHandleForReading.readabilityHandler = nil
         errorPipe?.fileHandleForReading.readabilityHandler = nil
+        try? stdinPipe?.fileHandleForWriting.close()
         process = nil
         outputPipe = nil
         errorPipe = nil
+        stdinPipe = nil
+        awaitingCode = false
     }
 
     private func statusText(command: String) async -> String {
