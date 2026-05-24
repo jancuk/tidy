@@ -62,8 +62,6 @@ struct DeveloperToolsView: View {
         HStack(spacing: 0) {
             toolsSidebar
 
-            Divider()
-
             Group {
                 switch selection {
                 case .json:
@@ -87,31 +85,39 @@ struct DeveloperToolsView: View {
     }
 
     private var toolsSidebar: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(spacing: 0) {
+            // Search field
+            HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 TextField("Search tools", text: $query)
                     .textFieldStyle(.plain)
+                    .font(.system(size: 12))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(.separator, lineWidth: 0.5))
+            .padding(.vertical, 7)
+            .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.8), lineWidth: 0.5)
+            )
+            .padding(10)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 1) {
                     ForEach(tools) { tool in
                         ToolSidebarRow(tool: tool, selected: selection == tool) {
                             selection = tool
                         }
                     }
                 }
+                .padding(.horizontal, 8)
             }
         }
-        .padding(12)
-        .frame(width: 270)
+        .frame(width: 200)
         .background(Color(NSColor.controlBackgroundColor))
+        .overlay(alignment: .trailing) { Divider() }
     }
 }
 
@@ -119,20 +125,22 @@ private struct ToolSidebarRow: View {
     let tool: DeveloperTool
     let selected: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 Image(systemName: tool.systemImage)
-                    .frame(width: 18)
-                    .foregroundStyle(selected ? .white : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
+                    .font(.system(size: 13))
+                    .frame(width: 16)
+                    .foregroundStyle(selected ? .white : Color(NSColor.secondaryLabelColor))
+                VStack(alignment: .leading, spacing: 1) {
                     Text(tool.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selected ? .white : .primary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(selected ? .white : Color(NSColor.labelColor))
                     Text(tool.subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(selected ? .white.opacity(0.82) : .secondary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(selected ? .white.opacity(0.7) : Color(NSColor.secondaryLabelColor))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -140,9 +148,15 @@ private struct ToolSidebarRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(selected
+                        ? Color(NSColor.labelColor).opacity(0.85)
+                        : (isHovered ? Color(NSColor.labelColor).opacity(0.05) : Color.clear))
+            )
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -408,32 +422,31 @@ private struct ToolScreen<ToolbarContent: View, Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color(NSColor.labelColor))
                         Text(subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
                     }
                     Spacer()
-                    HStack(spacing: 8) {
-                        toolbar
-                    }
-                    .controlSize(.small)
+                    HStack(spacing: 6) { toolbar }
+                        .controlSize(.small)
                 }
                 StatusPill(text: status, isError: isError)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
             .background(Color(NSColor.controlBackgroundColor))
+            .overlay(alignment: .bottom) { Divider() }
 
-            Divider()
-
-            content
-                .padding(14)
+            content.padding(14)
         }
+        .background(Color(NSColor.windowBackgroundColor))
     }
 }
 
@@ -442,13 +455,15 @@ private struct StatusPill: View {
     let isError: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+        HStack(spacing: 5) {
+            Circle()
+                .fill(isError ? Color.red : Color.green)
+                .frame(width: 6, height: 6)
             Text(text)
                 .lineLimit(1)
         }
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(isError ? .red : .green)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(isError ? Color.red : Color.green)
     }
 }
 
@@ -729,17 +744,16 @@ private struct PanelHeader<Content: View>: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
             Spacer()
-            HStack(spacing: 8) {
-                content
-            }
-            .controlSize(.small)
+            HStack(spacing: 8) { content }
+                .controlSize(.small)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .background(Color(NSColor.controlBackgroundColor))
+        .overlay(alignment: .bottom) { Divider().opacity(0.6) }
     }
 }
 
