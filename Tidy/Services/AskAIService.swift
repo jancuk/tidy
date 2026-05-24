@@ -197,7 +197,7 @@ enum AskAIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .providerUnavailable:
-            "Ask AI needs Gemini, OpenAI, Anthropic, OpenCode, Ollama, or Codex CLI. Choose one in Settings."
+            "Ask AI needs Gemini, OpenAI, Anthropic, OpenCode, Ollama, Codex CLI, or Claude (Subscription). Choose one in Settings."
         case .invalidResponse:
             "The AI provider returned an unexpected response."
         case .httpError(let status, let body):
@@ -211,6 +211,7 @@ enum AskAIError: LocalizedError {
 struct AskAIService {
     func ask(_ question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+
         if providerID == .codexCLI {
             return try await askCodexCLI(question: question, history: history, context: context)
         }
@@ -228,10 +229,8 @@ struct AskAIService {
             return try await askOpenCode(messages: messages)
         case .ollama:
             return try await askOllama(messages: messages)
-        case .languageTool:
+        case .languageTool, .codexCLI:
             throw AskAIError.providerUnavailable
-        case .codexCLI:
-            return try await askCodexCLI(question: question, history: history, context: context)
         case .claudeCLI:
             // TODO: Replace with askClaudeCLI once ClaudeCLIService is implemented (Task N)
             throw AskAIError.providerUnavailable
