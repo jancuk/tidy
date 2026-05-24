@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var correctionLogStore: CorrectionLogStore
     @AppStorage(AppDefaults.grammarProvider)     private var grammarProvider    = GrammarProviderID.gemini.rawValue
     @AppStorage(AppDefaults.grammarHotkey)       private var grammarHotkey      = Hotkey.grammarDefault.displayValue
     @AppStorage(AppDefaults.clipboardHotkey)     private var clipboardHotkey    = Hotkey.clipboardDefault.displayValue
@@ -216,11 +217,11 @@ struct SettingsView: View {
                         Button("Save API Keys") { saveKeychainValues() }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
-                        Button("Clear Correction Log") { appState.correctionLogStore.clear() }
+                        Button("Clear Correction Log") { correctionLogStore.clear() }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                         Spacer()
-                        Text("\(appState.correctionLogStore.entries.count) corrections logged")
+                        Text("\(correctionLogStore.entries.count) corrections logged")
                             .font(.system(size: 11))
                             .foregroundStyle(Color(NSColor.secondaryLabelColor))
                     }

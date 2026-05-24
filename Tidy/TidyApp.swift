@@ -48,6 +48,8 @@ struct TidyApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .environmentObject(appState.correctionLogStore)
+                .environmentObject(appState.clipboardService)
                 .preferredColorScheme(resolvedColorScheme)
         }
     }
