@@ -2,28 +2,102 @@ import SwiftUI
 
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
-    case developerTools
     case clipboard
+    case developerTools
     case correctionLog
+    case settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .home: "Home"
+        case .home:           "Home"
+        case .clipboard:      "Clipboard History"
         case .developerTools: "Developer Tools"
-        case .clipboard: "Clipboard History"
-        case .correctionLog: "Correction Log"
+        case .correctionLog:  "Correction Log"
+        case .settings:       "Settings"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .home: "house"
-        case .developerTools: "hammer"
-        case .clipboard: "doc.on.clipboard"
-        case .correctionLog: "list.bullet.rectangle"
+        case .home:           "house"
+        case .clipboard:      "doc.on.clipboard"
+        case .developerTools: "chevron.left.forwardslash.chevron.right"
+        case .correctionLog:  "checkmark.rectangle"
+        case .settings:       "gear"
         }
+    }
+
+    /// Whether this section appears in the bottom rail group (below the divider).
+    var isBottomGroup: Bool { self == .settings }
+}
+
+struct IconRailView: View {
+    @Binding var selection: DashboardSection
+
+    private var topSections: [DashboardSection] {
+        DashboardSection.allCases.filter { !$0.isBottomGroup }
+    }
+    private var bottomSections: [DashboardSection] {
+        DashboardSection.allCases.filter { $0.isBottomGroup }
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(topSections) { section in
+                railButton(section)
+            }
+            Spacer()
+            Divider()
+                .frame(width: 28)
+                .padding(.vertical, 4)
+            ForEach(bottomSections) { section in
+                railButton(section)
+            }
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .frame(width: 54)
+        .background(Color(NSColor.controlBackgroundColor))
+        .overlay(alignment: .trailing) {
+            Divider()
+        }
+    }
+
+    @ViewBuilder
+    private func railButton(_ section: DashboardSection) -> some View {
+        let active = selection == section
+        Button {
+            selection = section
+        } label: {
+            ZStack(alignment: .leading) {
+                // Active left-edge indicator bar
+                if active {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color(NSColor.labelColor).opacity(0.7))
+                        .frame(width: 3, height: 18)
+                        .offset(x: -1)
+                }
+                // Icon background + icon
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(active
+                        ? Color(NSColor.labelColor).opacity(0.11)
+                        : Color.clear)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Image(systemName: section.systemImage)
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundStyle(active
+                                ? Color(NSColor.labelColor)
+                                : Color(NSColor.secondaryLabelColor))
+                    }
+            }
+            .frame(width: 54, height: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(section.title)
     }
 }
 
@@ -55,6 +129,9 @@ struct DashboardView: View {
                     .environmentObject(appState.clipboardService)
             case .correctionLog:
                 CorrectionLogView()
+            case .settings:
+                Text("Settings")
+                    .navigationTitle("Settings")
             }
         }
         .onReceive(permissionTimer) { _ in
