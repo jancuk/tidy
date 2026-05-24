@@ -5,7 +5,7 @@
 <h1 align="center">Tidy</h1>
 
 <p align="center">
-  A native macOS app that fixes your grammar with a hotkey, keeps a searchable clipboard history, and bundles developer utilities — all in a clean, focused interface.
+  The productivity layer your Mac deserves — AI-powered, keyboard-first, clutter-free.
 </p>
 
 <p align="center">
