@@ -237,6 +237,18 @@ struct TidyTests {
         defaults.removePersistentDomain(forName: "test.tidy.claudecli")
     }
 
+    @Test func claudeCodeCLIServiceResolvesAbsolutePath() throws {
+        // /usr/bin/env always exists and is executable — use as a stand-in
+        let url = try ClaudeCodeCLIService.resolvedExecutableURL(for: "/usr/bin/env")
+        #expect(url.path == "/usr/bin/env")
+    }
+
+    @Test func claudeCodeCLIServiceThrowsForMissingExecutable() {
+        #expect(throws: (any Error).self) {
+            try ClaudeCodeCLIService.resolvedExecutableURL(for: "/nonexistent/claude-xyz")
+        }
+    }
+
     private func makeTemporaryFolder() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("TidyTests-\(UUID().uuidString)", isDirectory: true)
