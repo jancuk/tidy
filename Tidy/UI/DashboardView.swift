@@ -338,16 +338,35 @@ struct ClipboardListView: View {
     @EnvironmentObject private var clipboardService: ClipboardService
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search clipboard history", text: $clipboardService.query)
-                    .textFieldStyle(.plain)
-            }
-            .padding(10)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        VStack(spacing: 0) {
+            // Header + search
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Clipboard History")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color(NSColor.labelColor))
 
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                    TextField("Search \(clipboardService.entries.count) items…", text: $clipboardService.query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color(NSColor.separatorColor).opacity(0.8), lineWidth: 0.5)
+                )
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .overlay(alignment: .bottom) { Divider() }
+
+            // List
             if clipboardService.entries.isEmpty {
                 ContentUnavailableView(
                     "No clipboard history yet",
@@ -356,35 +375,98 @@ struct ClipboardListView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(clipboardService.entries) { entry in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.preview)
-                            .lineLimit(3)
-                        HStack(spacing: 8) {
-                            if let appName = entry.sourceAppName {
-                                Text(appName)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(clipboardService.entries.enumerated()), id: \.element.id) { index, entry in
+                            ClipboardRowView(entry: entry, isFirst: index == 0) {
+                                clipboardService.delete(entry)
                             }
-                            Text(entry.createdAt, style: .relative)
-                            Text("\(entry.charCount) chars")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                    .contextMenu {
-                        Button("Copy") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(entry.content, forType: .string)
-                        }
-                        Button("Delete", role: .destructive) {
-                            clipboardService.delete(entry)
+                            if index < clipboardService.entries.count - 1 {
+                                Divider().opacity(0.4).padding(.leading, 18)
+                            }
                         }
                     }
                 }
-                .listStyle(.inset)
             }
         }
-        .padding(16)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+private struct ClipboardRowView: View {
+    let entry: ClipboardEntry
+    let isFirst: Bool
+    let onDelete: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.preview)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(NSColor.labelColor))
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(appColor(for: entry.sourceAppName))
+                        .frame(width: 7, height: 7)
+                    if let app = entry.sourceAppName {
+                        Text(app)
+                    }
+                    Text(entry.createdAt, style: .relative)
+                    Text("·")
+                    Text("\(entry.charCount) chars")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isHovered {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(entry.content, forType: .string)
+                } label: {
+                    Text("Copy")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(Color(NSColor.labelColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(isFirst || isHovered
+            ? Color(NSColor.controlBackgroundColor)
+            : Color.clear)
+        .animation(.easeInOut(duration: 0.1), value: isHovered)
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            Button("Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(entry.content, forType: .string)
+            }
+            Button("Delete", role: .destructive) { onDelete() }
+        }
+    }
+
+    private func appColor(for appName: String?) -> Color {
+        switch appName?.lowercased() {
+        case "safari":    return Color(red: 0, green: 0.478, blue: 1)
+        case "chrome", "google chrome": return Color(red: 1, green: 0.584, blue: 0)
+        case "firefox":   return Color(red: 1, green: 0.4, blue: 0.1)
+        case "xcode":     return Color(red: 0.345, green: 0.525, blue: 0.835)
+        case "vs code", "visual studio code", "code": return Color(red: 0.2, green: 0.784, blue: 0.349)
+        case "terminal", "iterm2", "iterm": return Color(red: 0.1, green: 0.1, blue: 0.1)
+        case "notes":     return Color(red: 1, green: 0.231, blue: 0.188)
+        case "slack":     return Color(red: 0.44, green: 0.15, blue: 0.6)
+        default:          return Color(NSColor.secondaryLabelColor)
+        }
     }
 }
 
