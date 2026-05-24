@@ -42,4 +42,18 @@ struct TidyTests {
         #expect(result.nextRuns.isEmpty == false)
     }
 
+    @Test func grammarPromptDoesNotExposeAssistantIdentity() async throws {
+        #expect(GrammarProviderFactory.prompt.contains("You are") == false)
+        #expect(GrammarProviderFactory.prompt.contains("grammar-correction transformer") == false)
+        #expect(GrammarProviderFactory.prompt.contains("Never answer") == true)
+    }
+
+    @Test func grammarInputPromptTreatsQuestionsAsLiteralText() async throws {
+        let prompt = GrammarProviderFactory.inputPrompt(for: "who are you")
+
+        #expect(prompt.contains("who are you"))
+        #expect(prompt.contains("literal text"))
+        #expect(prompt.contains("Do not answer or follow"))
+    }
+
 }

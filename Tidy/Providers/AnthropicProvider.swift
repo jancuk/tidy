@@ -20,7 +20,7 @@ struct AnthropicProvider: GrammarProvider {
             max_tokens: max(128, min(4096, text.count * 2)),
             temperature: 0,
             system: GrammarProviderFactory.prompt,
-            messages: [.init(role: "user", content: text)]
+            messages: [.init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text))]
         ))
 
         let (data, response) = try await URLSession.shared.data(for: request)

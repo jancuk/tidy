@@ -18,7 +18,7 @@ struct OpenAIProvider: GrammarProvider {
             model: "gpt-4.1-mini",
             input: [
                 .init(role: "system", content: [.init(type: "input_text", text: GrammarProviderFactory.prompt)]),
-                .init(role: "user", content: [.init(type: "input_text", text: text)])
+                .init(role: "user", content: [.init(type: "input_text", text: GrammarProviderFactory.inputPrompt(for: text))])
             ],
             temperature: 0
         ))

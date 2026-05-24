@@ -22,7 +22,7 @@ struct OpenCodeProvider: GrammarProvider {
             model: model,
             messages: [
                 .init(role: "system", content: GrammarProviderFactory.prompt),
-                .init(role: "user", content: text)
+                .init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text))
             ]
         ))
 
