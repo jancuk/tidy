@@ -11,8 +11,13 @@ final class AskAIModel: ObservableObject {
     @Published var folderSources: [AskAIFolderSource] = []
     @Published var selectedFolderSources: [AskAIFolderSource] = []
     @Published var isLoading = false
+    @Published var progressDescription = ""
     @Published var errorMessage: String?
     @Published var focusRequestID = UUID()
+    var codexThreadID: String?
+    var codexSessionFolderKey: String?
+    var claudeSessionID: String?
+    var claudeSessionFolderKey: String?
 }
 
 @MainActor
@@ -22,6 +27,7 @@ final class AskAIController {
     private let requestLogStore: AIRequestLogStore
     private var panel: NSPanel?
     private var eventMonitor: Any?
+    private var progressTask: Task<Void, Never>?
 
     init(requestLogStore: AIRequestLogStore) {
         self.requestLogStore = requestLogStore
@@ -87,19 +93,43 @@ final class AskAIController {
             mcpSources: model.selectedMCPSources,
             folderURLs: model.selectedFolderSources.map(\.url)
         )
+        let providerID = currentProviderID
+        let folderSessionKey = Self.folderSessionKey(for: context.folderURLs)
+        let cliSession = AskAICLISession(
+            codexThreadID: providerID == .codexCLI && model.codexSessionFolderKey == folderSessionKey ? model.codexThreadID : nil,
+            claudeSessionID: providerID == .claudeCLI && model.claudeSessionFolderKey == folderSessionKey ? model.claudeSessionID : nil
+        )
         model.query = ""
         model.errorMessage = nil
         model.messages.append(AskAIMessage(role: .user, content: question))
         model.isLoading = true
+        startProgress(for: context)
 
         Task {
             do {
-                let answer = try await service.ask(question, history: history, context: context, logStore: requestLogStore)
+                let answer = try await service.ask(
+                    question,
+                    history: history,
+                    context: context,
+                    logStore: requestLogStore,
+                    cliSession: cliSession,
+                    progressHandler: { [weak self] message in
+                        Task { @MainActor in
+                            self?.applyProviderProgress(message)
+                        }
+                    },
+                    sessionUpdateHandler: { [weak self] providerID, sessionID in
+                        Task { @MainActor in
+                            self?.storeCLISession(providerID: providerID, sessionID: sessionID, folderKey: folderSessionKey)
+                        }
+                    }
+                )
                 model.messages.append(AskAIMessage(role: .assistant, content: answer))
             } catch {
                 model.errorMessage = error.localizedDescription
                 model.messages.append(AskAIMessage(role: .assistant, content: error.localizedDescription))
             }
+            stopProgress()
             model.isLoading = false
             model.focusRequestID = UUID()
         }
@@ -133,10 +163,65 @@ final class AskAIController {
     }
 
     private func clear() {
+        stopProgress()
         model.messages.removeAll()
         model.query = ""
         model.errorMessage = nil
+        model.codexThreadID = nil
+        model.codexSessionFolderKey = nil
+        model.claudeSessionID = nil
+        model.claudeSessionFolderKey = nil
         model.focusRequestID = UUID()
+    }
+
+    private func startProgress(for context: AskAIContext) {
+        stopProgress()
+
+        let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+        let steps = AskAIProgressSteps.steps(for: providerID, context: context)
+        model.progressDescription = steps.first ?? "\(providerID.displayName) is working on it"
+
+        progressTask = Task { [weak self] in
+            guard steps.count > 1 else { return }
+            var index = 1
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard let self, self.model.isLoading else { return }
+                    self.model.progressDescription = steps[min(index, steps.count - 1)]
+                }
+                if index < steps.count - 1 {
+                    index += 1
+                }
+            }
+        }
+    }
+
+    private func stopProgress() {
+        progressTask?.cancel()
+        progressTask = nil
+        model.progressDescription = ""
+    }
+
+    private func applyProviderProgress(_ message: String) {
+        guard model.isLoading else { return }
+        progressTask?.cancel()
+        progressTask = nil
+        model.progressDescription = message
+    }
+
+    private func storeCLISession(providerID: GrammarProviderID, sessionID: String, folderKey: String) {
+        switch providerID {
+        case .codexCLI:
+            model.codexThreadID = sessionID
+            model.codexSessionFolderKey = folderKey
+        case .claudeCLI:
+            model.claudeSessionID = sessionID
+            model.claudeSessionFolderKey = folderKey
+        case .gemini, .openAI, .anthropic, .languageTool, .openCode, .ollama:
+            break
+        }
     }
 
     private func syncMentionsFromQuery(_ query: String) {
@@ -184,6 +269,17 @@ final class AskAIController {
                 return event
             }
         }
+    }
+
+    private var currentProviderID: GrammarProviderID {
+        GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+    }
+
+    private static func folderSessionKey(for urls: [URL]) -> String {
+        urls
+            .map { $0.standardizedFileURL.path }
+            .sorted()
+            .joined(separator: "\n")
     }
 }
 
@@ -453,7 +549,7 @@ struct AskAIView: View {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .controlSize(.small)
-                                    Text("Thinking...")
+                                    Text(model.progressDescription.isEmpty ? "\(providerName) is working on it" : model.progressDescription)
                                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                                 }
                                 .font(.system(size: 13))
@@ -591,8 +687,58 @@ private struct MentionSuggestionRow: Identifiable {
     let action: () -> Void
 }
 
+private enum AskAIProgressSteps {
+    static func steps(for providerID: GrammarProviderID, context: AskAIContext) -> [String] {
+        let hasFolders = !context.folderURLs.isEmpty
+        let folderLabel = context.folderURLs.count == 1 ? "selected folder" : "selected folders"
+
+        switch providerID {
+        case .codexCLI:
+            return hasFolders ? [
+                "Starting Codex CLI in read-only mode",
+                "Codex CLI is opening the \(folderLabel)",
+                "Codex CLI is inspecting relevant files",
+                "Codex CLI is connecting the repo context",
+                "Codex CLI is drafting the answer"
+            ] : [
+                "Starting Codex CLI in read-only mode",
+                "Codex CLI is reading the question",
+                "Codex CLI is drafting the answer"
+            ]
+        case .claudeCLI:
+            return hasFolders ? [
+                "Starting Claude Code in read-only mode",
+                "Claude Code is opening the \(folderLabel)",
+                "Claude Code is inspecting relevant files",
+                "Claude Code is connecting the repo context",
+                "Claude Code is drafting the answer"
+            ] : [
+                "Starting Claude Code",
+                "Claude Code is reading the question",
+                "Claude Code is drafting the answer"
+            ]
+        case .gemini, .openAI, .anthropic, .openCode, .ollama:
+            let name = providerID.displayName
+            return hasFolders ? [
+                "Preparing local folder context",
+                "Reading relevant files from the \(folderLabel)",
+                "Sending context to \(name)",
+                "\(name) is working through the answer",
+                "Formatting the response"
+            ] : [
+                "Sending the question to \(name)",
+                "\(name) is working through the answer",
+                "Formatting the response"
+            ]
+        case .languageTool:
+            return ["Preparing local grammar request"]
+        }
+    }
+}
+
 private struct AskAIMessageBubble: View {
     let message: AskAIMessage
+    @State private var didCopy = false
 
     var body: some View {
         HStack {
@@ -601,10 +747,27 @@ private struct AskAIMessageBubble: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(message.role == .user ? "You" : "Tidy")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    .textCase(.uppercase)
+                HStack(spacing: 8) {
+                    Text(message.role == .user ? "You" : "Tidy")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                        .textCase(.uppercase)
+
+                    Spacer(minLength: 8)
+
+                    if message.role == .assistant {
+                        Button(action: copyResponse) {
+                            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(didCopy ? Color.green : Color(NSColor.secondaryLabelColor))
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(didCopy ? "Copied" : "Copy response")
+                    }
+                }
+
                 MarkdownText(message.content)
                     .font(.system(size: 14))
                     .textSelection(.enabled)
@@ -629,6 +792,17 @@ private struct AskAIMessageBubble: View {
             ? Color.accentColor.opacity(0.18)
             : Color(NSColor.controlBackgroundColor)
     }
+
+    private func copyResponse() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message.content, forType: .string)
+        didCopy = true
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            didCopy = false
+        }
+    }
 }
 
 private struct MarkdownText: View {
@@ -639,14 +813,240 @@ private struct MarkdownText: View {
     }
 
     var body: some View {
-        Text(attributedContent)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(MarkdownBlock.blocks(from: content).enumerated()), id: \.offset) { _, block in
+                view(for: block)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var attributedContent: AttributedString {
-        if let attributed = try? AttributedString(markdown: content) {
-            return attributed
+    @ViewBuilder
+    private func view(for block: MarkdownBlock) -> some View {
+        switch block {
+        case .heading(let level, let text):
+            Text(inlineMarkdown(text))
+                .font(.system(size: level == 1 ? 18 : 16, weight: .semibold))
+                .foregroundStyle(Color(NSColor.labelColor))
+                .padding(.top, level == 1 ? 2 : 1)
+        case .paragraph(let text):
+            Text(inlineMarkdown(text))
+                .lineSpacing(3)
+        case .bullets(let items):
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("•")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(inlineMarkdown(item))
+                            .lineSpacing(3)
+                    }
+                }
+            }
+        case .numbered(let items):
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("\(index + 1).")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .frame(minWidth: 20, alignment: .trailing)
+                        Text(inlineMarkdown(item))
+                            .lineSpacing(3)
+                    }
+                }
+            }
+        case .code(let text):
+            ScrollView(.horizontal, showsIndicators: true) {
+                Text(text)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.7), lineWidth: 0.5)
+            )
+        case .rule:
+            Divider()
+                .padding(.vertical, 2)
         }
-        return AttributedString(content)
+    }
+
+    private func inlineMarkdown(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text)) ?? AttributedString(text)
+    }
+}
+
+private enum MarkdownBlock {
+    case heading(level: Int, text: String)
+    case paragraph(String)
+    case bullets([String])
+    case numbered([String])
+    case code(String)
+    case rule
+
+    static func blocks(from content: String) -> [MarkdownBlock] {
+        let lines = content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n")
+
+        var blocks: [MarkdownBlock] = []
+        var paragraphLines: [String] = []
+        var bulletItems: [String] = []
+        var numberedItems: [String] = []
+        var codeLines: [String] = []
+        var looseCodeLines: [String] = []
+        var isInsideFence = false
+
+        func flushParagraph() {
+            guard !paragraphLines.isEmpty else { return }
+            blocks.append(.paragraph(paragraphLines.joined(separator: " ")))
+            paragraphLines.removeAll()
+        }
+
+        func flushBullets() {
+            guard !bulletItems.isEmpty else { return }
+            blocks.append(.bullets(bulletItems))
+            bulletItems.removeAll()
+        }
+
+        func flushNumbered() {
+            guard !numberedItems.isEmpty else { return }
+            blocks.append(.numbered(numberedItems))
+            numberedItems.removeAll()
+        }
+
+        func flushLooseCode() {
+            guard !looseCodeLines.isEmpty else { return }
+            blocks.append(.code(looseCodeLines.joined(separator: "\n")))
+            looseCodeLines.removeAll()
+        }
+
+        func flushAllTextBlocks() {
+            flushParagraph()
+            flushBullets()
+            flushNumbered()
+            flushLooseCode()
+        }
+
+        for rawLine in lines {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("```") {
+                flushAllTextBlocks()
+                if isInsideFence {
+                    blocks.append(.code(codeLines.joined(separator: "\n")))
+                    codeLines.removeAll()
+                    isInsideFence = false
+                } else {
+                    isInsideFence = true
+                }
+                continue
+            }
+
+            if isInsideFence {
+                codeLines.append(rawLine)
+                continue
+            }
+
+            if trimmed.isEmpty {
+                flushAllTextBlocks()
+                continue
+            }
+
+            if isRule(trimmed) {
+                flushAllTextBlocks()
+                blocks.append(.rule)
+                continue
+            }
+
+            if isLooseCodeLine(rawLine) {
+                flushParagraph()
+                flushBullets()
+                flushNumbered()
+                looseCodeLines.append(rawLine)
+                continue
+            }
+
+            if let heading = heading(from: trimmed) {
+                flushAllTextBlocks()
+                blocks.append(.heading(level: heading.level, text: heading.text))
+                continue
+            }
+
+            if let bullet = bulletText(from: trimmed) {
+                flushParagraph()
+                flushNumbered()
+                flushLooseCode()
+                bulletItems.append(bullet)
+                continue
+            }
+
+            if let numbered = numberedText(from: trimmed) {
+                flushParagraph()
+                flushBullets()
+                flushLooseCode()
+                numberedItems.append(numbered)
+                continue
+            }
+
+            flushBullets()
+            flushNumbered()
+            flushLooseCode()
+            paragraphLines.append(trimmed)
+        }
+
+        if isInsideFence, !codeLines.isEmpty {
+            blocks.append(.code(codeLines.joined(separator: "\n")))
+        }
+        flushAllTextBlocks()
+        return blocks.isEmpty ? [.paragraph(content)] : blocks
+    }
+
+    private static func heading(from line: String) -> (level: Int, text: String)? {
+        let markers = line.prefix { $0 == "#" }
+        guard !markers.isEmpty, markers.count <= 6 else { return nil }
+        let text = line.dropFirst(markers.count).trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        return (markers.count, text)
+    }
+
+    private static func bulletText(from line: String) -> String? {
+        guard line.count > 2 else { return nil }
+        let first = line[line.startIndex]
+        guard ["-", "*", "+"].contains(first) else { return nil }
+        let second = line[line.index(after: line.startIndex)]
+        guard second.isWhitespace else { return nil }
+        return String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func numberedText(from line: String) -> String? {
+        var index = line.startIndex
+        guard line[index].isNumber else { return nil }
+        while index < line.endIndex, line[index].isNumber {
+            index = line.index(after: index)
+        }
+        guard index < line.endIndex, [".", ")"].contains(line[index]) else { return nil }
+        let separatorIndex = line.index(after: index)
+        guard separatorIndex < line.endIndex, line[separatorIndex].isWhitespace else { return nil }
+        return String(line[line.index(after: separatorIndex)...]).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func isRule(_ line: String) -> Bool {
+        line.count >= 3 && Set(line).isSubset(of: ["-", "_", "*"])
+    }
+
+    private static func isLooseCodeLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return line.hasPrefix("    ")
+            || line.hasPrefix("\t")
+            || trimmed.hasPrefix("├")
+            || trimmed.hasPrefix("└")
+            || trimmed.hasPrefix("│")
+            || trimmed.hasPrefix("|--")
+            || trimmed.hasPrefix("`--")
     }
 }
 

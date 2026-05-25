@@ -30,7 +30,6 @@ final class FileTidyViewModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.prompt = "Scan Folder"
         panel.message = "Tidy scans locally and shows every move before anything changes."
-        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         selectedFolder = url

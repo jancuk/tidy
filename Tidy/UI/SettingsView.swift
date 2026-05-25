@@ -288,7 +288,7 @@ struct SettingsView: View {
                                     Button("Cancel") { codexLogin.cancel() }
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
-                                } else {
+                                } else if !codexLogin.isSignedIn {
                                     Button("Sign in to OpenAI Codex") {
                                         codexLogin.start(command: codexCLIPath)
                                     }
