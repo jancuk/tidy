@@ -308,7 +308,7 @@ struct AskAIView: View {
 
     var body: some View {
         ZStack {
-            AskAIVisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+            AskAIVisualEffectView(material: .sidebar, blendingMode: .behindWindow)
             VStack(spacing: 0) {
                 header
                 Divider()
@@ -334,43 +334,56 @@ struct AskAIView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        HStack(spacing: 12) {
-            Button(action: hide) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Color(NSColor.controlColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        ZStack {
+            // Centered title stack
+            VStack(spacing: 2) {
+                Text("Ask AI")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(NSColor.labelColor))
+                Text(providerName)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
             }
-            .buttonStyle(.plain)
-            .help("Close")
 
-            Text(model.messages.isEmpty ? "Ask AI anything..." : "Ask Follow-up")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(model.messages.isEmpty ? Color(NSColor.placeholderTextColor) : Color(NSColor.labelColor))
+            HStack(spacing: 0) {
+                // Back / close
+                Button(action: hide) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Close (Esc)")
 
-            Spacer()
+                Spacer()
 
-            Text(providerName)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(NSColor.controlBackgroundColor), in: Capsule())
-
-            Button(action: clear) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .background(Color(NSColor.controlColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                // New conversation
+                Button(action: clear) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 17))
+                        .foregroundStyle(
+                            model.messages.isEmpty && model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? Color(NSColor.tertiaryLabelColor)
+                                : Color.accentColor
+                        )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New Conversation")
+                .disabled(model.messages.isEmpty && model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .buttonStyle(.plain)
-            .help("New chat")
-            .disabled(model.messages.isEmpty && model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 70)
+        .padding(.horizontal, 4)
+        .frame(height: 52)
     }
+
+    // MARK: - Folder / Mention bars
 
     private var mentionMode: AskAIMentionMode? {
         AskAIMentionParser.currentMention(in: model.query)
@@ -383,22 +396,19 @@ struct AskAIView: View {
                     Button {
                         removeFolder(source)
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 12, weight: .semibold))
+                        HStack(spacing: 5) {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 11, weight: .semibold))
                             Text(source.alias)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 12, weight: .medium))
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
                         }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.accentColor.opacity(0.16), in: Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.accentColor.opacity(0.35), lineWidth: 0.5)
-                        )
+                        .padding(.vertical, 5)
+                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .help(source.url.path)
@@ -406,7 +416,7 @@ struct AskAIView: View {
             }
             .padding(.horizontal, 16)
         }
-        .frame(height: 42)
+        .frame(height: 40)
     }
 
     @ViewBuilder
@@ -461,7 +471,7 @@ struct AskAIView: View {
         rows.append(
             MentionSuggestionRow(
                 id: "choose-folder",
-                title: "Choose folders...",
+                title: "Choose folders…",
                 subtitle: "Select one or more directories",
                 systemImage: "folder.badge.plus",
                 isSelected: false,
@@ -487,23 +497,24 @@ struct AskAIView: View {
     }
 
     private func suggestionList(title: String, rows: [MentionSuggestionRow]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 .textCase(.uppercase)
+                .padding(.horizontal, 4)
 
             ForEach(rows) { row in
                 Button(action: row.action) {
                     HStack(spacing: 10) {
                         Image(systemName: row.systemImage)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(row.isSelected ? Color.accentColor : Color(NSColor.secondaryLabelColor))
                             .frame(width: 22)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(row.title)
-                                .font(.system(size: 13, weight: .semibold, design: row.title.hasPrefix("@") ? .monospaced : .default))
+                                .font(.system(size: 13, weight: .medium, design: row.title.hasPrefix("@") ? .monospaced : .default))
                                 .foregroundStyle(Color(NSColor.labelColor))
                             Text(row.subtitle)
                                 .font(.system(size: 11))
@@ -516,13 +527,13 @@ struct AskAIView: View {
 
                         if row.isSelected {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -532,6 +543,8 @@ struct AskAIView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Message area
+
     private var messageArea: some View {
         Group {
             if model.messages.isEmpty {
@@ -539,25 +552,18 @@ struct AskAIView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
+                        LazyVStack(alignment: .leading, spacing: 16) {
                             ForEach(model.messages) { message in
                                 AskAIMessageBubble(message: message)
                                     .id(message.id)
                             }
 
                             if model.isLoading {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                    Text(model.progressDescription.isEmpty ? "\(providerName) is working on it" : model.progressDescription)
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                }
-                                .font(.system(size: 13))
-                                .padding(.horizontal, 18)
-                                .padding(.bottom, 8)
+                                loadingBubble
                             }
                         }
-                        .padding(18)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 20)
                     }
                     .onChange(of: model.messages.count) { _, _ in
                         if let lastID = model.messages.last?.id {
@@ -570,70 +576,140 @@ struct AskAIView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var loadingBubble: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            // AI avatar
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 26, height: 26)
+
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                if !model.progressDescription.isEmpty {
+                    Text(model.progressDescription)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+            )
+
+            Spacer(minLength: 80)
+        }
+    }
+
+    // MARK: - Empty state
+
     private var emptyState: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 20) {
             Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
+
             VStack(spacing: 8) {
                 Text("Ask Anything")
-                    .font(.system(size: 30, weight: .bold))
-                Text("Type @ for MCP or @! for folders")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Color(NSColor.labelColor))
+                Text("Type @ to include MCP or folder context")
+                    .font(.system(size: 15))
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
             }
+
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    // MARK: - Footer
 
     private var footer: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            Label("Quick AI", systemImage: "sparkles")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                .padding(.bottom, 8)
-
-            Button(action: clear) {
-                Label("New chat", systemImage: "plus.message")
+        VStack(spacing: 0) {
+            if let error = model.errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.red.opacity(0.06))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(model.messages.isEmpty && model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .padding(.bottom, 4)
 
-            TextField(model.messages.isEmpty ? "Ask AI anything..." : "Ask follow-up...", text: $model.query, axis: .vertical)
+            ZStack(alignment: .bottomTrailing) {
+                TextField(
+                    model.messages.isEmpty ? "Message…" : "Reply…",
+                    text: $model.query,
+                    axis: .vertical
+                )
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
-                .lineLimit(1...5)
+                .lineLimit(1...6)
                 .focused($inputFocused)
                 .onSubmit(submit)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color(NSColor.separatorColor).opacity(0.75), lineWidth: 0.5)
-                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .padding(.trailing, 48)
 
-            if let error = model.errorMessage {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.red)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.bottom, 8)
+                Button(action: submit) {
+                    ZStack {
+                        Circle()
+                            .fill(sendButtonColor)
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
+                .padding(.trailing, 10)
+                .padding(.bottom, 8)
+                .animation(.easeInOut(duration: 0.15), value: model.query.isEmpty)
             }
-
-            Button(action: submit) {
-                Label(model.messages.isEmpty ? "Ask AI" : "Ask Follow-up", systemImage: "return")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
-            .padding(.bottom, 4)
+            .background(
+                Color(NSColor.textBackgroundColor),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(minHeight: 66)
     }
+
+    private var sendButtonColor: Color {
+        model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading
+            ? Color(NSColor.tertiaryLabelColor)
+            : Color.accentColor
+    }
+
+    // MARK: - Helpers
 
     private func filteredMCPSources(_ filter: String) -> [AskAIMCPSource] {
         let needle = filter.lowercased()
@@ -677,6 +753,8 @@ struct AskAIView: View {
         (GrammarProviderID(rawValue: grammarProvider) ?? .gemini).displayName
     }
 }
+
+// MARK: - Supporting types
 
 private struct MentionSuggestionRow: Identifiable {
     let id: String
@@ -736,60 +814,76 @@ private enum AskAIProgressSteps {
     }
 }
 
+// MARK: - Message bubble
+
 private struct AskAIMessageBubble: View {
     let message: AskAIMessage
+    @State private var isHovered = false
     @State private var didCopy = false
 
     var body: some View {
-        HStack {
+        HStack(alignment: .bottom, spacing: 8) {
             if message.role == .user {
                 Spacer(minLength: 80)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(message.role == .user ? "You" : "Tidy")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                        .textCase(.uppercase)
-
-                    Spacer(minLength: 8)
-
-                    if message.role == .assistant {
-                        Button(action: copyResponse) {
-                            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(didCopy ? Color.green : Color(NSColor.secondaryLabelColor))
-                                .frame(width: 24, height: 24)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(didCopy ? "Copied" : "Copy response")
-                    }
+            if message.role == .assistant {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.12))
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
                 }
+                .frame(width: 26, height: 26)
+            }
 
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 5) {
                 MarkdownText(message.content)
                     .font(.system(size: 14))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(message.role == .user ? Color.white : Color(NSColor.labelColor))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(
+                                message.role == .assistant
+                                    ? Color(NSColor.separatorColor).opacity(0.5)
+                                    : Color.clear,
+                                lineWidth: 0.5
+                            )
+                    )
+
+                if message.role == .assistant {
+                    Button(action: copyResponse) {
+                        HStack(spacing: 4) {
+                            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                            Text(didCopy ? "Copied" : "Copy")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(didCopy ? Color.green : Color(NSColor.tertiaryLabelColor))
+                    }
+                    .buttonStyle(.plain)
+                    .help(didCopy ? "Copied!" : "Copy response")
+                    .opacity(isHovered ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.15), value: isHovered)
+                }
             }
-            .padding(12)
-            .frame(maxWidth: 620, alignment: .leading)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color(NSColor.separatorColor).opacity(0.65), lineWidth: message.role == .assistant ? 0.5 : 0)
-            )
+            .frame(maxWidth: 560, alignment: message.role == .user ? .trailing : .leading)
 
             if message.role == .assistant {
                 Spacer(minLength: 80)
             }
         }
+        .onHover { isHovered = $0 }
     }
 
-    private var backgroundColor: Color {
+    private var bubbleBackground: Color {
         message.role == .user
-            ? Color.accentColor.opacity(0.18)
+            ? Color.accentColor
             : Color(NSColor.controlBackgroundColor)
     }
 
@@ -797,13 +891,14 @@ private struct AskAIMessageBubble: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(message.content, forType: .string)
         didCopy = true
-
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             didCopy = false
         }
     }
 }
+
+// MARK: - Markdown renderer
 
 private struct MarkdownText: View {
     let content: String
@@ -827,7 +922,6 @@ private struct MarkdownText: View {
         case .heading(let level, let text):
             Text(inlineMarkdown(text))
                 .font(.system(size: level == 1 ? 18 : 16, weight: .semibold))
-                .foregroundStyle(Color(NSColor.labelColor))
                 .padding(.top, level == 1 ? 2 : 1)
         case .paragraph(let text):
             Text(inlineMarkdown(text))
@@ -860,13 +954,13 @@ private struct MarkdownText: View {
                 Text(text)
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)
-                    .padding(8)
+                    .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(Color(NSColor.textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color(NSColor.separatorColor).opacity(0.7), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
             )
         case .rule:
             Divider()
@@ -1049,6 +1143,8 @@ private enum MarkdownBlock {
             || trimmed.hasPrefix("`--")
     }
 }
+
+// MARK: - Visual effect background
 
 private struct AskAIVisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
