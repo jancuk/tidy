@@ -120,6 +120,16 @@ struct TidyTests {
         #expect(context.contains("Demo/DemoApp.swift"))
     }
 
+    @Test func folderContextSkipsProtectedHomeChildrenUnlessExplicitlySelected() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let documents = home.appendingPathComponent("Documents", isDirectory: true)
+
+        #expect(FolderContextBuilder.isPrivacySensitiveDescendant(documents, rootURL: home))
+        #expect(!FolderContextBuilder.isPrivacySensitiveDescendant(documents, rootURL: documents))
+    }
+
     @Test func folderContextPrioritizesQuestionRelevantFiles() throws {
         let root = try makeTemporaryFolder()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -235,6 +245,31 @@ struct TidyTests {
         defaults.registerTidyDefaults()
         #expect(defaults.string(forKey: AppDefaults.claudeCLIPath) == "claude")
         defaults.removePersistentDomain(forName: "test.tidy.claudecli")
+    }
+
+    @Test func codexLoginStatusDetectsSignedInSession() {
+        #expect(CodexLoginController.statusMeansSignedIn("Logged in using ChatGPT"))
+        #expect(CodexLoginController.statusMeansSignedIn("Authenticated"))
+        #expect(!CodexLoginController.statusMeansSignedIn("Not signed in"))
+    }
+
+    @Test func codexCLIJSONProgressParsesThreadAndCommandEvents() throws {
+        let thread = CodexCLIJSONEventParser.snapshot(from: #"{"type":"thread.started","thread_id":"abc-123"}"#)
+        #expect(thread?.threadID == "abc-123")
+        #expect(thread?.progressMessage == "Codex session started")
+
+        let command = CodexCLIJSONEventParser.snapshot(from: #"{"type":"item.started","item":{"type":"command_execution","command":"/bin/zsh -lc rg AskAI"}}"#)
+        #expect(command?.progressMessage == "Codex is running `rg AskAI`")
+    }
+
+    @Test func claudeCodeStreamParserExtractsSessionAndResult() throws {
+        let initEvent = ClaudeCodeStreamEventParser.snapshot(from: #"{"type":"system","subtype":"init","session_id":"session-1"}"#)
+        #expect(initEvent?.sessionID == "session-1")
+        #expect(initEvent?.progressMessage == "Claude Code session started")
+
+        let result = ClaudeCodeStreamEventParser.snapshot(from: #"{"type":"result","session_id":"session-1","result":"Done."}"#)
+        #expect(result?.answer == "Done.")
+        #expect(result?.progressMessage == "Claude Code finished the answer")
     }
 
     @Test func claudeCodeCLIServiceResolvesAbsolutePath() throws {

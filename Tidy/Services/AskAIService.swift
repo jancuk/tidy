@@ -85,6 +85,11 @@ struct AskAIContext {
     var folderURLs: [URL]
 }
 
+struct AskAICLISession {
+    var codexThreadID: String?
+    var claudeSessionID: String?
+}
+
 enum AskAIMentionParser {
     static func mcpSources(in text: String) -> Set<AskAIMCPSource> {
         let tokens = mentionTokens(in: text, prefix: "@")
@@ -209,13 +214,29 @@ enum AskAIError: LocalizedError {
 }
 
 struct AskAIService {
-    func ask(_ question: String, history: [AskAIMessage], context: AskAIContext, logStore: AIRequestLogStore) async throws -> String {
+    func ask(
+        _ question: String,
+        history: [AskAIMessage],
+        context: AskAIContext,
+        logStore: AIRequestLogStore,
+        cliSession: AskAICLISession = AskAICLISession(),
+        progressHandler: @escaping (String) -> Void = { _ in },
+        sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void = { _, _ in }
+    ) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
         let providerName = providerID.displayName
         let start = Date()
 
         do {
-            let answer = try await performAsk(question: question, history: history, context: context, providerID: providerID)
+            let answer = try await performAsk(
+                question: question,
+                history: history,
+                context: context,
+                providerID: providerID,
+                cliSession: cliSession,
+                progressHandler: progressHandler,
+                sessionUpdateHandler: sessionUpdateHandler
+            )
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             Task { @MainActor in
                 logStore.append(AIRequestLogEntry(
@@ -247,13 +268,35 @@ struct AskAIService {
         return nil
     }
 
-    private func performAsk(question: String, history: [AskAIMessage], context: AskAIContext, providerID: GrammarProviderID) async throws -> String {
+    private func performAsk(
+        question: String,
+        history: [AskAIMessage],
+        context: AskAIContext,
+        providerID: GrammarProviderID,
+        cliSession: AskAICLISession,
+        progressHandler: @escaping (String) -> Void,
+        sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void
+    ) async throws -> String {
         // CLI-based providers are handled before the switch (special prompt-based invocation)
         if providerID == .codexCLI {
-            return try await askCodexCLI(question: question, history: history, context: context)
+            return try await askCodexCLI(
+                question: question,
+                history: history,
+                context: context,
+                resumeThreadID: cliSession.codexThreadID,
+                progressHandler: progressHandler,
+                sessionUpdateHandler: sessionUpdateHandler
+            )
         }
         if providerID == .claudeCLI {
-            return try await askClaudeCLI(question: question, history: history, context: context)
+            return try await askClaudeCLI(
+                question: question,
+                history: history,
+                context: context,
+                resumeSessionID: cliSession.claudeSessionID,
+                progressHandler: progressHandler,
+                sessionUpdateHandler: sessionUpdateHandler
+            )
         }
 
         let messages = buildMessages(question: question, history: history, context: context)
@@ -445,7 +488,14 @@ struct AskAIService {
         return answer
     }
 
-    private func askCodexCLI(question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
+    private func askCodexCLI(
+        question: String,
+        history: [AskAIMessage],
+        context: AskAIContext,
+        resumeThreadID: String?,
+        progressHandler: @escaping (String) -> Void,
+        sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void
+    ) async throws -> String {
         let recentHistory = history.suffix(8)
             .map { "\($0.role.rawValue.uppercased()):\n\($0.content)" }
             .joined(separator: "\n\n")
@@ -453,11 +503,15 @@ struct AskAIService {
             .map(\.path)
             .joined(separator: "\n")
 
-        let prompt = """
+        let prompt: String
+        if resumeThreadID == nil {
+            prompt = """
         You are running inside Tidy as the Codex CLI model.
         Answer the user's question using Codex's normal repository-reading behavior.
         Do not modify files. Do not run write commands. Inspect/read only.
-        Use concise Markdown. Cite relative file paths when helpful.
+        Keep the repo inspection bounded: start with fast file/search commands, inspect only the files needed for the question, and answer without doing a broad full-repo review.
+        If a selected folder is broad, such as the user's home folder, do not inspect macOS privacy-sensitive folders like Desktop, Documents, Downloads, Pictures, Photos libraries, Movies, or Music unless that exact folder was explicitly selected.
+        Use structured Markdown with short sections, blank lines between blocks, and bullets or tables for lists. Cite relative file paths when helpful.
 
         Selected folders:
         \(folderList.isEmpty ? "(none)" : folderList)
@@ -468,22 +522,45 @@ struct AskAIService {
         User question:
         \(question)
         """
+        } else {
+            prompt = """
+        Continue the existing Tidy Ask AI session.
+        Keep the same read-only behavior: do not modify files and do not run write commands.
+        Answer the follow-up directly using the existing repo context and inspect only if needed.
+        Use structured Markdown with short sections, blank lines between blocks, and bullets or tables for lists. Cite relative file paths when helpful.
+
+        User question:
+        \(question)
+        """
+        }
 
         let workingDirectory = context.folderURLs.first
         let additionalDirectories = Array(context.folderURLs.dropFirst())
-        let answer = try await CodexCLIService.run(
+        let result = try await CodexCLIService.runWithResult(
             prompt: prompt,
             workingDirectory: workingDirectory,
             additionalDirectories: additionalDirectories,
-            timeout: 300
+            resumeThreadID: resumeThreadID,
+            timeout: 600,
+            progressHandler: progressHandler
         )
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let threadID = result.threadID {
+            sessionUpdateHandler(.codexCLI, threadID)
+        }
+        let answer = result.answer.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !answer.isEmpty else { throw AskAIError.emptyAnswer }
         return answer
     }
 
-    private func askClaudeCLI(question: String, history: [AskAIMessage], context: AskAIContext) async throws -> String {
+    private func askClaudeCLI(
+        question: String,
+        history: [AskAIMessage],
+        context: AskAIContext,
+        resumeSessionID: String?,
+        progressHandler: @escaping (String) -> Void,
+        sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void
+    ) async throws -> String {
         let recentHistory = history.suffix(8)
             .map { "\($0.role.rawValue.uppercased()):\n\($0.content)" }
             .joined(separator: "\n\n")
@@ -491,9 +568,12 @@ struct AskAIService {
             .map(\.path)
             .joined(separator: "\n")
 
-        let prompt = """
+        let prompt: String
+        if resumeSessionID == nil {
+            prompt = """
         You are an AI assistant running inside Tidy.
-        Answer the user's question concisely using Markdown. Cite relative file paths when helpful.
+        Answer the user's question concisely using structured Markdown with short sections, blank lines between blocks, and bullets or tables for lists. Cite relative file paths when helpful.
+        If a selected folder is broad, such as the user's home folder, do not inspect macOS privacy-sensitive folders like Desktop, Documents, Downloads, Pictures, Photos libraries, Movies, or Music unless that exact folder was explicitly selected.
 
         Selected folders:
         \(folderList.isEmpty ? "(none)" : folderList)
@@ -504,9 +584,31 @@ struct AskAIService {
         User question:
         \(question)
         """
+        } else {
+            prompt = """
+        Continue the existing Tidy Ask AI session.
+        Answer the follow-up directly using the existing repo context and inspect only if needed.
+        Use structured Markdown with short sections, blank lines between blocks, and bullets or tables for lists. Cite relative file paths when helpful.
 
-        let answer = try await ClaudeCodeCLIService.run(prompt: prompt, timeout: 300)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        User question:
+        \(question)
+        """
+        }
+
+        let workingDirectory = context.folderURLs.first
+        let additionalDirectories = Array(context.folderURLs.dropFirst())
+        let result = try await ClaudeCodeCLIService.runWithResult(
+            prompt: prompt,
+            workingDirectory: workingDirectory,
+            additionalDirectories: additionalDirectories,
+            resumeSessionID: resumeSessionID,
+            timeout: 600,
+            progressHandler: progressHandler
+        )
+        if let sessionID = result.sessionID {
+            sessionUpdateHandler(.claudeCLI, sessionID)
+        }
+        let answer = result.answer.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !answer.isEmpty else { throw AskAIError.emptyAnswer }
         return answer
@@ -603,7 +705,7 @@ struct FolderContextBuilder {
             let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey])
 
             if values?.isDirectory == true {
-                if skippedDirectories.contains(name) {
+                if skippedDirectories.contains(name) || isPrivacySensitiveDescendant(fileURL, rootURL: folderURL) {
                     enumerator.skipDescendants()
                 }
                 continue
@@ -768,7 +870,7 @@ struct FolderContextBuilder {
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
 
             if values?.isDirectory == true {
-                if skippedDirectoryNames.contains(name) {
+                if skippedDirectoryNames.contains(name) || isPrivacySensitiveDescendant(url, rootURL: folderURL) {
                     enumerator.skipDescendants()
                     continue
                 }
@@ -807,7 +909,7 @@ struct FolderContextBuilder {
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey])
 
             if values?.isDirectory == true {
-                if skippedDirectoryNames.contains(name) {
+                if skippedDirectoryNames.contains(name) || isPrivacySensitiveDescendant(url, rootURL: folderURL) {
                     enumerator.skipDescendants()
                 }
                 continue
@@ -951,6 +1053,35 @@ struct FolderContextBuilder {
 
     private static var skippedDirectoryNames: Set<String> {
         ["node_modules", ".git", "build", "dist", ".next", ".swiftpm", "DerivedData", "Pods", ".venv", "coverage", ".turbo"]
+    }
+
+    static func isPrivacySensitiveDescendant(_ url: URL, rootURL: URL) -> Bool {
+        let fileURL = url.resolvingSymlinksInPath().standardizedFileURL
+        let root = rootURL.resolvingSymlinksInPath().standardizedFileURL
+        guard fileURL.path != root.path else { return false }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let protectedHomeChildren = [
+            "Desktop",
+            "Documents",
+            "Downloads",
+            "Movies",
+            "Music",
+            "Pictures"
+        ]
+        let protectedPaths = Set(protectedHomeChildren.map { home.appendingPathComponent($0, isDirectory: true).path })
+
+        if protectedPaths.contains(fileURL.path), !protectedPaths.contains(root.path) {
+            return true
+        }
+
+        if fileURL.pathExtension.lowercased() == "photoslibrary", fileURL.path != root.path {
+            return true
+        }
+
+        return false
     }
 
     private static func declarations(in fileURL: URL) -> [String]? {

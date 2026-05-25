@@ -6,6 +6,7 @@ final class CodexLoginController: ObservableObject {
     @Published var output = ""
     @Published var status = "Not checked"
     @Published var isSigningIn = false
+    @Published var isSignedIn = false
     @Published var authURL: URL?
     @Published var deviceCode = ""
 
@@ -16,7 +17,7 @@ final class CodexLoginController: ObservableObject {
 
     func refreshStatus(command: String) {
         Task {
-            status = await statusText(command: command)
+            updateStatus(await statusText(command: command))
         }
     }
 
@@ -29,7 +30,7 @@ final class CodexLoginController: ObservableObject {
 
         """
         rawLoginOutput = ""
-        status = "Waiting for sign-in"
+        updateStatus("Waiting for sign-in")
         authURL = nil
         deviceCode = ""
         isSigningIn = true
@@ -66,7 +67,7 @@ final class CodexLoginController: ObservableObject {
             try process.run()
         } catch {
             isSigningIn = false
-            status = error.localizedDescription
+            updateStatus(error.localizedDescription)
             output += "\n\(error.localizedDescription)"
         }
     }
@@ -75,7 +76,7 @@ final class CodexLoginController: ObservableObject {
         process?.terminate()
         cleanupProcess()
         isSigningIn = false
-        status = "Sign-in cancelled"
+        updateStatus("Sign-in cancelled")
         output += "\nSign-in cancelled."
     }
 
@@ -106,14 +107,19 @@ final class CodexLoginController: ObservableObject {
         cleanupProcess()
         isSigningIn = false
         Task {
-            status = await statusText(command: command)
-            if status.lowercased().contains("logged in") {
+            updateStatus(await statusText(command: command))
+            if isSignedIn {
                 output = """
                 Signed in to OpenAI Codex for Tidy.
                 (Tidy uses its own session — Codex CLI and VS Code are unchanged.)
                 """
             }
         }
+    }
+
+    private func updateStatus(_ text: String) {
+        status = text
+        isSignedIn = Self.statusMeansSignedIn(text)
     }
 
     private func cleanupProcess() {
@@ -191,6 +197,11 @@ final class CodexLoginController: ObservableObject {
                 return error.localizedDescription
             }
         }.value
+    }
+
+    nonisolated static func statusMeansSignedIn(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("logged in") || lower.contains("authenticated")
     }
 }
 
