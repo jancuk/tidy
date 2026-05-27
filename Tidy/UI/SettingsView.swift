@@ -22,15 +22,15 @@ struct SettingsView: View {
     @State private var statusMessage   = ""
     @State private var selectedTab     = SettingsTab.general
     @State private var claudeAuthCode  = ""
-    @StateObject private var codexLogin = CodexLoginController()
+    @StateObject private var codexLogin  = CodexLoginController()
     @StateObject private var claudeLogin = ClaudeLoginController()
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            pageHeader
             tabBar
-            Divider()
-            content
+            Divider().opacity(0.5)
+            contentArea
         }
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
@@ -41,63 +41,85 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Header
+    // MARK: - Header
 
-    private var header: some View {
-        HStack {
-            Text("Settings")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(Color(NSColor.labelColor))
+    private var pageHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Settings")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color(NSColor.labelColor))
+                Text("Configure providers, hotkeys, and preferences")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+            }
             Spacer()
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.bottom, 14)
+        .background(Color(NSColor.controlBackgroundColor))
+        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 
-    // MARK: Tab Bar
+    // MARK: - Tab bar
 
     enum SettingsTab: String, CaseIterable {
-        case general  = "General"
-        case model    = "Model"
+        case general   = "General"
+        case model     = "Model"
         case clipboard = "Clipboard"
-        case hotkeys  = "Hotkeys"
+        case hotkeys   = "Hotkeys"
+
+        var systemImage: String {
+            switch self {
+            case .general:   "gear"
+            case .model:     "cpu"
+            case .clipboard: "doc.on.clipboard"
+            case .hotkeys:   "keyboard"
+            }
+        }
     }
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(SettingsTab.allCases, id: \.self) { tab in
                 Button {
-                    selectedTab = tab
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedTab = tab
+                    }
                 } label: {
-                    Text(tab.rawValue)
-                        .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
-                        .foregroundStyle(selectedTab == tab
-                            ? Color(NSColor.labelColor)
-                            : Color(NSColor.secondaryLabelColor))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .overlay(alignment: .bottom) {
-                            if selectedTab == tab {
-                                Rectangle()
-                                    .fill(Color(NSColor.labelColor).opacity(0.8))
-                                    .frame(height: 2)
-                                    .offset(y: 0.5)
-                            }
-                        }
+                    HStack(spacing: 5) {
+                        Image(systemName: tab.systemImage)
+                            .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                        Text(tab.rawValue)
+                            .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                    }
+                    .foregroundStyle(
+                        selectedTab == tab
+                            ? Color.white
+                            : Color(NSColor.secondaryLabelColor)
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(
+                        selectedTab == tab ? Color.accentColor : Color.clear,
+                        in: Capsule()
+                    )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 
-    // MARK: Content
+    // MARK: - Content
 
     @ViewBuilder
-    private var content: some View {
+    private var contentArea: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 switch selectedTab {
                 case .general:   generalContent
                 case .model:     modelContent
@@ -109,14 +131,15 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: General
+    // MARK: - General tab
 
     private var generalContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 22) {
             settingsSection(title: "App") {
-                settingsGroup {
+                settingsCard {
                     settingsToggleRow(
                         label: "Launch at login",
+                        systemImage: "power",
                         isOn: $launchAtLogin,
                         onChange: { value in
                             do { try appState.setLaunchAtLogin(value) }
@@ -130,9 +153,9 @@ struct SettingsView: View {
             }
 
             settingsSection(title: "Appearance") {
-                settingsGroup {
+                settingsCard {
                     HStack {
-                        Text("Color scheme")
+                        Label("Color scheme", systemImage: "circle.lefthalf.filled")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(NSColor.labelColor))
                         Spacer()
@@ -151,11 +174,13 @@ struct SettingsView: View {
             }
 
             settingsSection(title: "Permissions") {
-                settingsGroup {
+                settingsCard {
                     HStack {
                         Label(
                             Permissions.isAccessibilityTrusted ? "Accessibility allowed" : "Accessibility needed",
-                            systemImage: Permissions.isAccessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                            systemImage: Permissions.isAccessibilityTrusted
+                                ? "checkmark.shield.fill"
+                                : "exclamationmark.shield.fill"
                         )
                         .font(.system(size: 13))
                         .foregroundStyle(Permissions.isAccessibilityTrusted ? Color.green : Color.orange)
@@ -179,14 +204,14 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Model
+    // MARK: - Model tab
 
     private var modelContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            settingsSection(title: "Model Provider") {
-                settingsGroup {
+        VStack(alignment: .leading, spacing: 22) {
+            settingsSection(title: "Provider") {
+                settingsCard {
                     HStack {
-                        Text("Provider")
+                        Label("AI provider", systemImage: "cpu")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(NSColor.labelColor))
                         Spacer()
@@ -196,7 +221,7 @@ struct SettingsView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .frame(width: 160)
+                        .frame(width: 170)
                         .labelsHidden()
                     }
                     .padding(.horizontal, 14)
@@ -205,54 +230,54 @@ struct SettingsView: View {
             }
 
             settingsSection(title: "API Keys") {
-                settingsGroup {
-                    ForEach(GrammarProviderID.allCases.filter(\.requiresAPIKey)) { provider in
-                        VStack(alignment: .leading, spacing: 0) {
-                            HStack {
-                                Text(provider.displayName)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Color(NSColor.labelColor))
-                                Spacer()
-                                SecureField("API key", text: binding(for: provider.rawValue))
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 200)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                settingsCard {
+                    ForEach(Array(GrammarProviderID.allCases.filter(\.requiresAPIKey).enumerated()), id: \.element.id) { index, provider in
+                        HStack {
+                            Text(provider.displayName)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(NSColor.labelColor))
+                            Spacer()
+                            SecureField("API key", text: binding(for: provider.rawValue))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 200)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+
+                        if index < GrammarProviderID.allCases.filter(\.requiresAPIKey).count - 1 {
                             Divider().opacity(0.5)
                         }
                     }
-                    HStack {
-                        Button("Save API Keys") { saveKeychainValues() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        Button("Clear Correction Log") { correctionLogStore.clear() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        Spacer()
-                        Text("\(correctionLogStore.entries.count) corrections logged")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Save API Keys") { saveKeychainValues() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button("Clear Correction Log") { correctionLogStore.clear() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Spacer()
+                    Text("\(correctionLogStore.entries.count) corrections logged")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 }
             }
 
             if grammarProvider == GrammarProviderID.openCode.rawValue {
                 settingsSection(title: "OpenCode") {
-                    settingsGroup {
-                        settingsTextRow(label: "Model", binding: $openCodeModel, prompt: "e.g. deepseek-v4-flash-free")
+                    settingsCard {
+                        settingsTextRow(label: "Model", systemImage: "cpu", binding: $openCodeModel, prompt: "e.g. deepseek-v4-flash-free")
                     }
                 }
             }
 
             if grammarProvider == GrammarProviderID.ollama.rawValue {
                 settingsSection(title: "Ollama") {
-                    settingsGroup {
-                        settingsTextRow(label: "Base URL", binding: $ollamaBaseURL, prompt: "http://localhost:11434")
+                    settingsCard {
+                        settingsTextRow(label: "Base URL", systemImage: "network", binding: $ollamaBaseURL, prompt: "http://localhost:11434")
                         Divider().opacity(0.5)
-                        settingsTextRow(label: "Model", binding: $ollamaModel, prompt: "e.g. gnokit/improve-grammar")
+                        settingsTextRow(label: "Model", systemImage: "cpu", binding: $ollamaModel, prompt: "e.g. gnokit/improve-grammar")
                     }
                     Text("Runs locally — no API key required.")
                         .font(.footnote)
@@ -262,65 +287,25 @@ struct SettingsView: View {
 
             if grammarProvider == GrammarProviderID.codexCLI.rawValue {
                 settingsSection(title: "Codex CLI") {
-                    settingsGroup {
-                        settingsTextRow(label: "Command", binding: $codexCLIPath, prompt: "codex or /path/to/codex")
+                    settingsCard {
+                        settingsTextRow(label: "Command", systemImage: "terminal", binding: $codexCLIPath, prompt: "codex or /path/to/codex")
                         Divider().opacity(0.5)
-                        settingsTextRow(label: "Model", binding: $codexCLIModel, prompt: "optional, e.g. gpt-5.1-codex")
+                        settingsTextRow(label: "Model", systemImage: "cpu", binding: $codexCLIModel, prompt: "optional, e.g. gpt-5.1-codex")
                         Divider().opacity(0.5)
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("OpenAI Codex")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(Color(NSColor.labelColor))
-                                    Text(codexLogin.status)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                }
-                                Spacer()
-                                Button("Check Status") {
-                                    codexLogin.refreshStatus(command: codexCLIPath)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                if codexLogin.isSigningIn {
-                                    Button("Cancel") { codexLogin.cancel() }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                } else if !codexLogin.isSignedIn {
-                                    Button("Sign in to OpenAI Codex") {
-                                        codexLogin.start(command: codexCLIPath)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                }
-                            }
-
-                            if !codexLogin.output.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    if let _ = codexLogin.authURL {
-                                        Button("Open Auth URL") {
-                                            codexLogin.openAuthURL()
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-
-                                    Text(codexLogin.output)
-                                        .font(.system(size: 12, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .foregroundStyle(Color(NSColor.labelColor))
-                                        .padding(10)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        cliLoginSection(
+                            name: "OpenAI Codex",
+                            status: codexLogin.status,
+                            output: codexLogin.output,
+                            authURL: codexLogin.authURL,
+                            isSigningIn: codexLogin.isSigningIn,
+                            isSignedIn: codexLogin.isSignedIn,
+                            onRefresh: { codexLogin.refreshStatus(command: codexCLIPath) },
+                            onSignIn: { codexLogin.start(command: codexCLIPath) },
+                            onCancel: { codexLogin.cancel() },
+                            onOpenURL: { codexLogin.openAuthURL() }
+                        )
                     }
-                    Text("Uses your existing Codex CLI login/subscription. Ask AI runs Codex in read-only mode from the selected folder.")
+                    Text("Uses your existing Codex CLI login. Ask AI runs Codex in read-only mode.")
                         .font(.footnote)
                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 }
@@ -328,69 +313,42 @@ struct SettingsView: View {
 
             if grammarProvider == GrammarProviderID.claudeCLI.rawValue {
                 settingsSection(title: "Claude Code CLI") {
-                    settingsGroup {
-                        settingsTextRow(label: "Command", binding: $claudeCLIPath, prompt: "claude or /path/to/claude")
+                    settingsCard {
+                        settingsTextRow(label: "Command", systemImage: "terminal", binding: $claudeCLIPath, prompt: "claude or /path/to/claude")
                         Divider().opacity(0.5)
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Claude (Subscription)")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(Color(NSColor.labelColor))
-                                    Text(claudeLogin.status)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                }
-                                Spacer()
-                                Button("Check Status") {
-                                    claudeLogin.refreshStatus(command: claudeCLIPath)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                        cliLoginSection(
+                            name: "Claude (Pro/Max)",
+                            status: claudeLogin.status,
+                            output: claudeLogin.output,
+                            authURL: nil,
+                            isSigningIn: claudeLogin.isSigningIn,
+                            isSignedIn: claudeLogin.isLoggedIn,
+                            onRefresh: { claudeLogin.refreshStatus(command: claudeCLIPath) },
+                            onSignIn: { claudeLogin.start(command: claudeCLIPath) },
+                            onCancel: { claudeLogin.cancel() },
+                            onOpenURL: {}
+                        )
 
-                                if claudeLogin.isSigningIn {
-                                    Button("Cancel") { claudeLogin.cancel() }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                } else if !claudeLogin.isLoggedIn {
-                                    Button("Sign in to Claude") {
-                                        claudeLogin.start(command: claudeCLIPath)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                }
-                            }
-
-                            if !claudeLogin.output.isEmpty {
-                                Text(claudeLogin.output)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .foregroundStyle(Color(NSColor.labelColor))
-                                    .padding(10)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            }
-
-                            if claudeLogin.awaitingCode {
-                                HStack(spacing: 8) {
-                                    TextField("Paste authentication code here", text: $claudeAuthCode)
-                                        .textFieldStyle(.roundedBorder)
-                                        .onSubmit {
-                                            claudeLogin.submitAuthCode(claudeAuthCode)
-                                            claudeAuthCode = ""
-                                        }
-                                    Button("Submit") {
+                        if claudeLogin.awaitingCode {
+                            Divider().opacity(0.5)
+                            HStack(spacing: 8) {
+                                TextField("Paste authentication code", text: $claudeAuthCode)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit {
                                         claudeLogin.submitAuthCode(claudeAuthCode)
                                         claudeAuthCode = ""
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                    .disabled(claudeAuthCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                                Button("Submit") {
+                                    claudeLogin.submitAuthCode(claudeAuthCode)
+                                    claudeAuthCode = ""
                                 }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(claudeAuthCode.trimmingCharacters(in: .whitespaces).isEmpty)
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
                     }
                     Text("Uses your Claude.ai Pro/Max subscription via Claude Code CLI. No API key required.")
                         .font(.footnote)
@@ -400,14 +358,81 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Clipboard
+    @ViewBuilder
+    private func cliLoginSection(
+        name: String,
+        status: String,
+        output: String,
+        authURL: URL?,
+        isSigningIn: Bool,
+        isSignedIn: Bool,
+        onRefresh: @escaping () -> Void,
+        onSignIn: @escaping () -> Void,
+        onCancel: @escaping () -> Void,
+        onOpenURL: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color(NSColor.labelColor))
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                }
+                Spacer()
+                Button("Refresh") { onRefresh() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                if isSigningIn {
+                    Button("Cancel") { onCancel() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } else if !isSignedIn {
+                    Button("Sign In") { onSignIn() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+            }
+
+            if !output.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    if authURL != nil {
+                        Button("Open Auth URL") { onOpenURL() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    Text(output)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textSelection(.enabled)
+                        .foregroundStyle(Color(NSColor.labelColor))
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            Color(NSColor.textBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+                        )
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Clipboard tab
 
     private var clipboardContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 22) {
             settingsSection(title: "Retention") {
-                settingsGroup {
+                settingsCard {
                     HStack {
-                        Text("Maximum entries")
+                        Label("Maximum entries", systemImage: "list.number")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(NSColor.labelColor))
                         Spacer()
@@ -418,7 +443,7 @@ struct SettingsView: View {
                     .padding(.vertical, 10)
                     Divider().opacity(0.5)
                     HStack {
-                        Text("Maximum age")
+                        Label("Maximum age", systemImage: "calendar")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(NSColor.labelColor))
                         Spacer()
@@ -431,7 +456,7 @@ struct SettingsView: View {
             }
 
             settingsSection(title: "Actions") {
-                HStack {
+                HStack(spacing: 8) {
                     Button("Open Palette") { appState.openPalette() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -443,19 +468,19 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Hotkeys
+    // MARK: - Hotkeys tab
 
     private var hotkeysContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 22) {
             settingsSection(title: "Shortcuts") {
-                settingsGroup {
-                    settingsTextRow(label: "Tidy selected text", binding: $grammarHotkey, prompt: "control+option+g")
+                settingsCard {
+                    settingsTextRow(label: "Tidy selected text", systemImage: "sparkles", binding: $grammarHotkey, prompt: "control+option+g")
                     Divider().opacity(0.5)
-                    settingsTextRow(label: "Clipboard palette", binding: $clipboardHotkey, prompt: "control+option+v")
+                    settingsTextRow(label: "Clipboard palette", systemImage: "doc.on.clipboard", binding: $clipboardHotkey, prompt: "control+option+v")
                     Divider().opacity(0.5)
-                    settingsTextRow(label: "Ask AI anything", binding: $askAIHotkey, prompt: "control+option+j")
+                    settingsTextRow(label: "Ask AI anything", systemImage: "bubble.left.and.bubble.right", binding: $askAIHotkey, prompt: "control+option+j")
                 }
-                Text("Format: control+option+j or command+shift+v")
+                Text("Format: control+option+j  ·  command+shift+v")
                     .font(.footnote)
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 Button("Apply Hotkeys") { appState.registerHotkeys() }
@@ -465,7 +490,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Reusable row helpers
+    // MARK: - Reusable components
 
     @ViewBuilder
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -480,20 +505,20 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
             content()
         }
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
         )
     }
 
-    private func settingsToggleRow(label: String, isOn: Binding<Bool>, onChange: ((Bool) -> Void)? = nil) -> some View {
+    private func settingsToggleRow(label: String, systemImage: String, isOn: Binding<Bool>, onChange: ((Bool) -> Void)? = nil) -> some View {
         HStack {
-            Text(label)
+            Label(label, systemImage: systemImage)
                 .font(.system(size: 13))
                 .foregroundStyle(Color(NSColor.labelColor))
             Spacer()
@@ -505,9 +530,9 @@ struct SettingsView: View {
         .padding(.vertical, 10)
     }
 
-    private func settingsTextRow(label: String, binding: Binding<String>, prompt: String) -> some View {
+    private func settingsTextRow(label: String, systemImage: String, binding: Binding<String>, prompt: String) -> some View {
         HStack {
-            Text(label)
+            Label(label, systemImage: systemImage)
                 .font(.system(size: 13))
                 .foregroundStyle(Color(NSColor.labelColor))
             Spacer()
@@ -520,7 +545,7 @@ struct SettingsView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: Keychain helpers
+    // MARK: - Keychain helpers
 
     private func binding(for key: String) -> Binding<String> {
         Binding(get: { keyValues[key, default: ""] }, set: { keyValues[key] = $0 })

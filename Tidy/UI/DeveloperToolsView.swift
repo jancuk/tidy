@@ -13,34 +13,34 @@ enum DeveloperTool: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .json: "JSON Format / Validate"
-        case .jwt: "JWT Debugger"
-        case .diff: "Text Diff Checker"
-        case .unixTime: "Unix Time Converter"
-        case .csv: "CSV / JSON Converter"
-        case .cron: "Cron Job Parser"
+        case .json:    "JSON Format / Validate"
+        case .jwt:     "JWT Debugger"
+        case .diff:    "Text Diff Checker"
+        case .unixTime:"Unix Time Converter"
+        case .csv:     "CSV / JSON Converter"
+        case .cron:    "Cron Job Parser"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .json: "Pretty print and validate JSON"
-        case .jwt: "Decode header, payload, and claims"
-        case .diff: "Compare text line by line"
-        case .unixTime: "Convert epoch seconds or milliseconds"
-        case .csv: "Convert CSV to JSON and JSON to CSV"
-        case .cron: "Explain schedules and next runs"
+        case .json:    "Pretty print and validate JSON"
+        case .jwt:     "Decode header, payload, and claims"
+        case .diff:    "Compare text line by line"
+        case .unixTime:"Convert epoch seconds or milliseconds"
+        case .csv:     "Convert CSV to JSON and JSON to CSV"
+        case .cron:    "Explain schedules and next runs"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .json: "curlybraces"
-        case .jwt: "key.horizontal"
-        case .diff: "arrow.left.arrow.right"
-        case .unixTime: "clock"
-        case .csv: "tablecells"
-        case .cron: "calendar.badge.clock"
+        case .json:    "curlybraces"
+        case .jwt:     "key.horizontal"
+        case .diff:    "arrow.left.arrow.right"
+        case .unixTime:"clock"
+        case .csv:     "tablecells"
+        case .cron:    "calendar.badge.clock"
         }
     }
 }
@@ -61,32 +61,24 @@ struct DeveloperToolsView: View {
     var body: some View {
         HStack(spacing: 0) {
             toolsSidebar
-
             Group {
                 switch selection {
-                case .json:
-                    JSONFormatterView()
-                case .jwt:
-                    JWTDebuggerView()
-                case .diff:
-                    TextDiffCheckerView()
-                case .unixTime:
-                    UnixTimeConverterView()
-                case .csv:
-                    CSVJSONConverterView()
-                case .cron:
-                    CronParserView()
+                case .json:    JSONFormatterView()
+                case .jwt:     JWTDebuggerView()
+                case .diff:    TextDiffCheckerView()
+                case .unixTime:UnixTimeConverterView()
+                case .csv:     CSVJSONConverterView()
+                case .cron:    CronParserView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .navigationTitle("Developer Tools")
     }
 
     private var toolsSidebar: some View {
         VStack(spacing: 0) {
-            // Search field
+            // Search
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
@@ -94,18 +86,29 @@ struct DeveloperToolsView: View {
                 TextField("Search tools", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.vertical, 8)
+            .background(
+                Color(NSColor.textBackgroundColor).opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color(NSColor.separatorColor).opacity(0.8), lineWidth: 0.5)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.6), lineWidth: 0.5)
             )
             .padding(10)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 2) {
                     ForEach(tools) { tool in
                         ToolSidebarRow(tool: tool, selected: selection == tool) {
                             selection = tool
@@ -115,9 +118,9 @@ struct DeveloperToolsView: View {
                 .padding(.horizontal, 8)
             }
         }
-        .frame(width: 200)
+        .frame(width: 210)
         .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .trailing) { Divider() }
+        .overlay(alignment: .trailing) { Divider().opacity(0.5) }
     }
 }
 
@@ -126,50 +129,47 @@ private struct ToolSidebarRow: View {
     let selected: Bool
     let action: () -> Void
     @State private var isHovered = false
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: tool.systemImage)
-                    .font(.system(size: 13))
-                    .frame(width: 16)
-                    .foregroundStyle(selected ? selectedForeground : Color(NSColor.secondaryLabelColor))
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(selected ? Color.accentColor.opacity(0.15) : Color(NSColor.controlColor).opacity(0.6))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: tool.systemImage)
+                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.accentColor : Color(NSColor.secondaryLabelColor))
+                }
+
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tool.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selected ? selectedForeground : Color(NSColor.labelColor))
+                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.accentColor : Color(NSColor.labelColor))
+                        .lineLimit(1)
                     Text(tool.subtitle)
                         .font(.system(size: 10))
-                        .foregroundStyle(selected ? selectedForeground.opacity(0.7) : Color(NSColor.secondaryLabelColor))
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
                         .lineLimit(1)
                 }
-                Spacer(minLength: 4)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(selected
-                        ? selectedBackground
-                        : (isHovered ? Color(NSColor.labelColor).opacity(0.05) : Color.clear))
+                selected
+                    ? Color.accentColor.opacity(0.10)
+                    : (isHovered ? Color(NSColor.controlColor).opacity(0.5) : Color.clear),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
     }
-
-    private var selectedBackground: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.15)
-            : Color(red: 0.23, green: 0.23, blue: 0.24).opacity(0.9)
-    }
-
-    private var selectedForeground: Color {
-        colorScheme == .dark ? Color(NSColor.labelColor) : .white
-    }
 }
+
+// MARK: - Tool screens
 
 private struct JSONFormatterView: View {
     @State private var input = "{\n  \"name\": \"Tidy\",\n  \"features\": [\"grammar\", \"clipboard\", \"developer tools\"]\n}"
@@ -200,10 +200,7 @@ private struct JSONFormatterView: View {
         .onChange(of: input) { _, _ in run() }
     }
 
-    private func run() {
-        result = JSONTool.format(input, minified: minified)
-    }
-
+    private func run() { result = JSONTool.format(input, minified: minified) }
     private func sample() {
         input = "{\"project\":\"Tidy\",\"count\":3,\"active\":true,\"tools\":[\"json\",\"jwt\",\"cron\"]}"
         run()
@@ -217,7 +214,7 @@ private struct JWTDebuggerView: View {
     var body: some View {
         ToolScreen(
             title: DeveloperTool.jwt.title,
-            subtitle: "Decode JWT header, payload, and date claims. Signature verification is intentionally not performed.",
+            subtitle: "Decode JWT header, payload, and date claims. Signature verification is not performed.",
             status: result.status,
             isError: result.isError
         ) {
@@ -237,22 +234,15 @@ private struct JWTDebuggerView: View {
         .onChange(of: token) { _, _ in decode() }
     }
 
-    private func decode() {
-        result = JWTTool.decode(token)
-    }
+    private func decode() { result = JWTTool.decode(token) }
 }
 
 private struct TextDiffCheckerView: View {
     @State private var oldText = "Tidy fixes grammar.\nClipboard history stays available.\nDeveloper tools are coming."
     @State private var newText = "Tidy fixes grammar quickly.\nClipboard history stays available.\nDeveloper tools are ready."
 
-    private var rows: [DiffRow] {
-        TextDiffTool.lineDiff(old: oldText, new: newText)
-    }
-
-    private var changeCount: Int {
-        rows.filter { $0.kind != .unchanged }.count
-    }
+    private var rows: [DiffRow] { TextDiffTool.lineDiff(old: oldText, new: newText) }
+    private var changeCount: Int { rows.filter { $0.kind != .unchanged }.count }
 
     var body: some View {
         ToolScreen(
@@ -278,8 +268,8 @@ private struct TextDiffCheckerView: View {
         rows.map { row in
             switch row.kind {
             case .unchanged: "  \(row.text)"
-            case .added: "+ \(row.text)"
-            case .removed: "- \(row.text)"
+            case .added:     "+ \(row.text)"
+            case .removed:   "- \(row.text)"
             }
         }.joined(separator: "\n")
     }
@@ -301,9 +291,7 @@ private struct UnixTimeConverterView: View {
                 convert()
             }
             Button("Copy ISO") {
-                if case .success(let value) = result {
-                    Pasteboard.copy(value.iso8601)
-                }
+                if case .success(let value) = result { Pasteboard.copy(value.iso8601) }
             }
         } content: {
             VStack(alignment: .leading, spacing: 12) {
@@ -322,15 +310,11 @@ private struct UnixTimeConverterView: View {
         case .failure(let message): message
         }
     }
-
     private var isError: Bool {
         if case .failure = result { return true }
         return false
     }
-
-    private func convert() {
-        result = UnixTimeTool.convert(timestamp)
-    }
+    private func convert() { result = UnixTimeTool.convert(timestamp) }
 }
 
 private enum CSVMode: String, CaseIterable, Identifiable {
@@ -352,9 +336,7 @@ private struct CSVJSONConverterView: View {
             isError: result.isError
         ) {
             Picker("Mode", selection: $mode) {
-                ForEach(CSVMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
+                ForEach(CSVMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
             }
             .pickerStyle(.segmented)
             .frame(width: 220)
@@ -363,7 +345,10 @@ private struct CSVJSONConverterView: View {
             Button("Copy Output") { Pasteboard.copy(result.output) }
         } content: {
             HStack(spacing: 12) {
-                CodeEditorPanel(title: mode.rawValue == CSVMode.csvToJSON.rawValue ? "CSV Input" : "JSON Input", text: $input) {
+                CodeEditorPanel(
+                    title: mode.rawValue == CSVMode.csvToJSON.rawValue ? "CSV Input" : "JSON Input",
+                    text: $input
+                ) {
                     Button("Sample") { sample() }
                     Button("Clear") { input = ""; convert() }
                 }
@@ -375,19 +360,14 @@ private struct CSVJSONConverterView: View {
 
     private func convert() {
         switch mode {
-        case .csvToJSON:
-            result = CSVTool.csvToJSON(input)
-        case .jsonToCSV:
-            result = CSVTool.jsonToCSV(input)
+        case .csvToJSON: result = CSVTool.csvToJSON(input)
+        case .jsonToCSV: result = CSVTool.jsonToCSV(input)
         }
     }
-
     private func sample() {
         switch mode {
-        case .csvToJSON:
-            input = "name,role\nTidy,Grammar assistant\nDevTools,Utilities"
-        case .jsonToCSV:
-            input = "[\n  {\"name\":\"Tidy\",\"role\":\"Grammar assistant\"},\n  {\"name\":\"DevTools\",\"role\":\"Utilities\"}\n]"
+        case .csvToJSON: input = "name,role\nTidy,Grammar assistant\nDevTools,Utilities"
+        case .jsonToCSV: input = "[\n  {\"name\":\"Tidy\",\"role\":\"Grammar assistant\"},\n  {\"name\":\"DevTools\",\"role\":\"Utilities\"}\n]"
         }
         convert()
     }
@@ -418,10 +398,10 @@ private struct CronParserView: View {
         .onChange(of: expression) { _, _ in parse() }
     }
 
-    private func parse() {
-        result = CronTool.parse(expression)
-    }
+    private func parse() { result = CronTool.parse(expression) }
 }
+
+// MARK: - ToolScreen wrapper
 
 private struct ToolScreen<ToolbarContent: View, Content: View>: View {
     let title: String
@@ -434,9 +414,9 @@ private struct ToolScreen<ToolbarContent: View, Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(title)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(Color(NSColor.labelColor))
@@ -453,13 +433,15 @@ private struct ToolScreen<ToolbarContent: View, Content: View>: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
             .background(Color(NSColor.controlBackgroundColor))
-            .overlay(alignment: .bottom) { Divider() }
+            .overlay(alignment: .bottom) { Divider().opacity(0.5) }
 
             content.padding(14)
         }
         .background(Color(NSColor.windowBackgroundColor))
     }
 }
+
+// MARK: - Shared panel components
 
 private struct StatusPill: View {
     let text: String
@@ -475,6 +457,12 @@ private struct StatusPill: View {
         }
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(isError ? Color.red : Color.green)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            (isError ? Color.red : Color.green).opacity(0.08),
+            in: Capsule()
+        )
     }
 }
 
@@ -495,17 +483,13 @@ private struct CodeEditorPanel<Actions: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelHeader(title: title) {
-                actions
-            }
-
+            PanelHeader(title: title) { actions }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
                     .font(.system(.body, design: .monospaced))
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .frame(minHeight: minHeight)
-
                 if text.isEmpty && !placeholder.isEmpty {
                     Text(placeholder)
                         .font(.system(.body, design: .monospaced))
@@ -517,7 +501,7 @@ private struct CodeEditorPanel<Actions: View>: View {
             }
             .background(Color(NSColor.textBackgroundColor))
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 }
 
@@ -541,7 +525,7 @@ private struct OutputPanel: View {
             }
             .background(Color(NSColor.textBackgroundColor))
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 }
 
@@ -577,22 +561,22 @@ private struct DiffOutputPanel: View {
             .background(Color(NSColor.textBackgroundColor))
             .frame(minHeight: 220)
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 
     private func prefix(for kind: DiffKind) -> String {
         switch kind {
         case .unchanged: " "
-        case .added: "+"
-        case .removed: "-"
+        case .added:     "+"
+        case .removed:   "-"
         }
     }
 
     private func background(for kind: DiffKind) -> Color {
         switch kind {
         case .unchanged: Color.clear
-        case .added: Color.green.opacity(0.14)
-        case .removed: Color.red.opacity(0.14)
+        case .added:     Color.green.opacity(0.12)
+        case .removed:   Color.red.opacity(0.12)
         }
     }
 }
@@ -617,8 +601,7 @@ private struct ClaimsPanel: View {
                             Text(key)
                                 .font(.system(.body, design: .monospaced).weight(.semibold))
                                 .frame(width: 110, alignment: .leading)
-                            Text(value)
-                                .textSelection(.enabled)
+                            Text(value).textSelection(.enabled)
                             Spacer()
                         }
                         .padding(.horizontal, 12)
@@ -635,7 +618,7 @@ private struct ClaimsPanel: View {
             }
             .background(Color(NSColor.textBackgroundColor))
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 }
 
@@ -648,21 +631,20 @@ private struct UnixResultPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 switch result {
                 case .success(let value):
-                    InfoRow(label: "Local", value: value.local)
-                    InfoRow(label: "UTC", value: value.utc)
-                    InfoRow(label: "ISO 8601", value: value.iso8601)
-                    InfoRow(label: "Seconds", value: String(value.seconds))
+                    InfoRow(label: "Local",        value: value.local)
+                    InfoRow(label: "UTC",          value: value.utc)
+                    InfoRow(label: "ISO 8601",     value: value.iso8601)
+                    InfoRow(label: "Seconds",      value: String(value.seconds))
                     InfoRow(label: "Milliseconds", value: String(value.milliseconds))
                 case .failure(let message):
-                    Text(message)
-                        .foregroundStyle(.red)
+                    Text(message).foregroundStyle(.red)
                 }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(NSColor.textBackgroundColor))
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 }
 
@@ -674,23 +656,19 @@ private struct CronResultPanel: View {
             PanelHeader(title: "Schedule")
             VStack(alignment: .leading, spacing: 14) {
                 if result.isError {
-                    Text(result.status)
-                        .foregroundStyle(.red)
+                    Text(result.status).foregroundStyle(.red)
                 } else {
                     InfoRow(label: "Description", value: result.description)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Fields")
-                            .font(.headline)
+                        Text("Fields").font(.headline)
                         ForEach(result.fields, id: \.0) { label, value in
                             InfoRow(label: label, value: value)
                         }
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Next Runs")
-                            .font(.headline)
+                        Text("Next Runs").font(.headline)
                         if result.nextRuns.isEmpty {
-                            Text("No runs found in the next year.")
-                                .foregroundStyle(.secondary)
+                            Text("No runs found in the next year.").foregroundStyle(.secondary)
                         } else {
                             ForEach(result.nextRuns, id: \.self) { run in
                                 Text(run)
@@ -705,7 +683,7 @@ private struct CronResultPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(NSColor.textBackgroundColor))
         }
-        .panelStyle()
+        .devPanelStyle()
     }
 }
 
@@ -719,8 +697,7 @@ private struct InfoRow: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 110, alignment: .leading)
-            Text(value)
-                .textSelection(.enabled)
+            Text(value).textSelection(.enabled)
             Spacer(minLength: 0)
         }
     }
@@ -757,29 +734,32 @@ private struct PanelHeader<Content: View>: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                .textCase(.uppercase)
+                .kerning(0.3)
             Spacer()
             HStack(spacing: 8) { content }
                 .controlSize(.small)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider().opacity(0.6) }
+        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 }
 
-private struct PanelModifier: ViewModifier {
+private struct DevPanelModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(.separator, lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+            )
     }
 }
 
 private extension View {
-    func panelStyle() -> some View {
-        modifier(PanelModifier())
-    }
+    func devPanelStyle() -> some View { modifier(DevPanelModifier()) }
 }
 
 private enum Pasteboard {
