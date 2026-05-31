@@ -42,7 +42,7 @@ final class GrammarService: ObservableObject {
                 do {
                     let corrected = try await provider.fixGrammar(selectedText, language: nil)
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
-                    try await replaceSelection(with: corrected)
+                    let hudHandled = try await replaceSelection(with: corrected)
                     logStore.append(original: selectedText, corrected: corrected, providerID: providerID.rawValue)
                     requestLogStore.append(AIRequestLogEntry(
                         providerName: provider.displayName,
@@ -50,7 +50,9 @@ final class GrammarService: ObservableObject {
                         durationMs: ms,
                         source: "grammar"
                     ))
-                    hud.show(.success("Tidied"), autoDismissAfter: 0.8)
+                    if !hudHandled {
+                        hud.show(.success("Tidied"), autoDismissAfter: 0.8)
+                    }
                 } catch {
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
                     requestLogStore.append(AIRequestLogEntry(
@@ -77,6 +79,22 @@ final class GrammarService: ObservableObject {
     private func currentProviderID() -> GrammarProviderID {
         let rawValue = UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? GrammarProviderID.gemini.rawValue
         return GrammarProviderID(rawValue: rawValue) ?? .gemini
+    }
+
+    // Bundle IDs of terminal emulators that don't support "replace selected text" via Cmd+V.
+    private static let terminalBundleIDs: Set<String> = [
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "com.mitchellh.ghostty",
+        "io.alacritty",
+        "com.github.wez.wezterm",
+        "net.kovidgoyal.kitty",
+        "co.zeit.hyper",
+    ]
+
+    private func frontmostAppIsTerminal() -> Bool {
+        guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
+        return Self.terminalBundleIDs.contains(bundleID)
     }
 
     private func readSelectedText() async throws -> String {
@@ -113,12 +131,23 @@ final class GrammarService: ObservableObject {
         return copiedText
     }
 
-    private func replaceSelection(with correctedText: String) async throws {
+    /// Returns `true` if it already showed the success HUD (terminal mode), `false` if the caller should.
+    @discardableResult
+    private func replaceSelection(with correctedText: String) async throws -> Bool {
+        if frontmostAppIsTerminal() {
+            // Terminals don't support replace-selection via Cmd+V — leave the
+            // corrected text in the clipboard so the user can paste manually.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(correctedText, forType: .string)
+            hud.show(.success("Corrected · ⌘V to paste"), autoDismissAfter: 3)
+            return true
+        }
         let snapshot = PasteboardSnapshot()
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(correctedText, forType: .string)
         KeyboardSimulator.paste()
         try await Task.sleep(for: .milliseconds(200))
         snapshot.restore()
+        return false
     }
 }
