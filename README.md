@@ -20,7 +20,7 @@
 - **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
 - **Light / Dark / System** appearance, user-selectable from Settings.
-- **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, Ollama (local), OpenCode, LanguageTool.
+- **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool.
 - API keys stored securely in macOS Keychain.
 
 ## Requirements
@@ -35,7 +35,7 @@
 ### 1. Clone
 
 ```sh
-git clone https://github.com/your-username/Tidy.git
+git clone https://github.com/jancuk/tidy.git
 cd Tidy
 ```
 
@@ -75,6 +75,7 @@ Open Settings (gear icon in the sidebar) → **Grammar** tab → paste your API 
 | Gemini Flash | [aistudio.google.com](https://aistudio.google.com) — free tier available |
 | OpenAI | [platform.openai.com](https://platform.openai.com) |
 | Anthropic | [console.anthropic.com](https://console.anthropic.com) |
+| DeepSeek | [platform.deepseek.com](https://platform.deepseek.com) |
 | Ollama | No key needed — runs locally |
 
 Gemini also checks the `GEMINI_API_KEY` environment variable before falling back to the saved Keychain value.
@@ -140,6 +141,7 @@ Do not commit:
 - `.claude/` or other local assistant worktrees.
 - `xcuserdata/` or `*.xcuserstate`.
 - `.env` files or API keys.
+- Private keys, signing certificates, and provisioning profiles.
 - Local SQLite databases or profiling output.
 
 ## License

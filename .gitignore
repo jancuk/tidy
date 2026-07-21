@@ -10,6 +10,7 @@ DerivedData/
 # Swift/Xcode build outputs and profiling data
 build/
 .build/
+.build-output/
 *.profraw
 *.profdata
 
@@ -26,8 +27,15 @@ docs/superpowers/
 # Local environment files
 .env
 .env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
 
 # App data generated during local runs
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db
+corrections.json
