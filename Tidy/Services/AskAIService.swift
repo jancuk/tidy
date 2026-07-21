@@ -198,6 +198,7 @@ enum AskAIError: LocalizedError {
     case invalidResponse
     case httpError(status: Int, body: String)
     case emptyAnswer
+    case responseTruncated(String)
 
     var errorDescription: String? {
         switch self {
@@ -209,6 +210,8 @@ enum AskAIError: LocalizedError {
             "API error \(status): \(String(body.prefix(180)))"
         case .emptyAnswer:
             "The AI provider returned an empty answer."
+        case .responseTruncated(let provider):
+            "\(provider) used its response limit before returning an answer. Please try again."
         }
     }
 }
@@ -308,6 +311,8 @@ struct AskAIService {
             return try await askOpenAI(messages: messages)
         case .anthropic:
             return try await askAnthropic(messages: messages)
+        case .deepSeek:
+            return try await askDeepSeek(messages: messages)
         case .openCode:
             return try await askOpenCode(messages: messages)
         case .ollama:
@@ -435,6 +440,47 @@ struct AskAIService {
         let decoded = try JSONDecoder().decode(AnthropicChatResponse.self, from: data)
         let answer = decoded.content.map(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw AskAIError.emptyAnswer }
+        return answer
+    }
+
+    private func askDeepSeek(messages: [ChatMessage]) async throws -> String {
+        guard let apiKey = apiKey(for: .deepSeek) else {
+            throw GrammarProviderError.missingAPIKey(GrammarProviderID.deepSeek.displayName)
+        }
+        let model = UserDefaults.standard.string(forKey: AppDefaults.deepSeekModel)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "deepseek-v4-flash"
+        let system = messages.first?.content ?? ""
+        let chatMessages = messages.dropFirst().map {
+            AnthropicChatRequest.Message(
+                role: $0.role == "assistant" ? "assistant" : "user",
+                content: $0.content
+            )
+        }
+
+        var request = URLRequest(url: URL(string: "https://api.deepseek.com/anthropic/messages")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(AnthropicChatRequest(
+            model: model,
+            max_tokens: 8192,
+            temperature: 0.2,
+            system: system,
+            messages: chatMessages
+        ))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        let decoded = try JSONDecoder().decode(DeepSeekChatResponse.self, from: data)
+        let answer = decoded.content.compactMap(\.text).joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else {
+            if decoded.stopReason == "max_tokens" {
+                throw AskAIError.responseTruncated(GrammarProviderID.deepSeek.displayName)
+            }
+            throw AskAIError.emptyAnswer
+        }
         return answer
     }
 
@@ -1214,6 +1260,20 @@ private struct AnthropicChatResponse: Decodable {
 
     struct Content: Decodable {
         let text: String
+    }
+}
+
+private struct DeepSeekChatResponse: Decodable {
+    let content: [Content]
+    let stopReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case stopReason = "stop_reason"
+    }
+
+    struct Content: Decodable {
+        let text: String?
     }
 }
 

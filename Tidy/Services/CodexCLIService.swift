@@ -13,10 +13,21 @@ enum CodexCLIError: LocalizedError {
         case .timedOut:
             "Codex CLI timed out before returning an answer."
         case .failed(let status, let output):
-            "Codex CLI exited with status \(status):\n\(String(output.prefix(240)))"
+            if Self.isExpiredSessionMessage(output) {
+                "Your Codex session expired. Open Settings -> Model and click Sign In Again."
+            } else {
+                "Codex CLI exited with status \(status):\n\(String(output.prefix(240)))"
+            }
         case .emptyOutput:
             "Codex CLI returned an empty answer."
         }
+    }
+
+    private static func isExpiredSessionMessage(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("refresh token was revoked")
+            || lower.contains("refresh_token_invalidated")
+            || lower.contains("token_expired")
     }
 }
 
@@ -58,6 +69,28 @@ struct CodexCLIJSONEventParser {
 
         guard threadID != nil || progressMessage != nil else { return nil }
         return Snapshot(threadID: threadID, progressMessage: progressMessage)
+    }
+
+    static func failureMessage(from output: String) -> String? {
+        for line in output.split(whereSeparator: \.isNewline).reversed() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("{"),
+                  let data = trimmed.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = object["type"] as? String else {
+                continue
+            }
+
+            if type == "turn.failed",
+               let error = object["error"] as? [String: Any],
+               let message = error["message"] as? String {
+                return message
+            }
+            if type == "error", let message = object["message"] as? String {
+                return message
+            }
+        }
+        return nil
     }
 
     private static func itemProgressMessage(from object: [String: Any], eventType: String) -> String? {
@@ -203,7 +236,7 @@ struct CodexCLIService {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
-        process.environment = codexEnvironment()
+        process.environment = codexEnvironment(executableURL: executable)
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -256,7 +289,8 @@ struct CodexCLIService {
             .joined(separator: "\n")
 
         guard process.terminationStatus == 0 else {
-            throw CodexCLIError.failed(status: process.terminationStatus, output: combinedOutput)
+            let failureOutput = CodexCLIJSONEventParser.failureMessage(from: stdoutText) ?? combinedOutput
+            throw CodexCLIError.failed(status: process.terminationStatus, output: failureOutput)
         }
 
         let finalAnswer = (try? String(contentsOf: outputURL, encoding: .utf8))?
@@ -301,10 +335,47 @@ struct CodexCLIService {
         try executableURL(for: command)
     }
 
-    static func codexEnvironment() -> [String: String] {
+    static func codexEnvironment(executableURL: URL? = nil) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = codexHomeURL.path
+
+        // GUI apps inherit a minimal PATH, while npm-installed launchers use
+        // `#!/usr/bin/env node`. Keep the resolved launcher's directory first so
+        // an NVM/FNM/Volta-installed Codex can find its matching Node runtime.
+        let existingEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let searchEntries = [executableURL?.deletingLastPathComponent().path]
+            .compactMap { $0 }
+            + nodeRuntimeDirectories()
+            + existingEntries
+        environment["PATH"] = searchEntries.reduce(into: [String]()) { entries, path in
+            if !path.isEmpty, !entries.contains(path) {
+                entries.append(path)
+            }
+        }.joined(separator: ":")
         return environment
+    }
+
+    private static func nodeRuntimeDirectories() -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var directories = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            home.appendingPathComponent(".local/bin").path,
+            home.appendingPathComponent(".volta/bin").path,
+            home.appendingPathComponent(".asdf/shims").path,
+            home.appendingPathComponent(".local/share/mise/shims").path
+        ]
+
+        let nvmRoot = home.appendingPathComponent(".nvm/versions/node")
+        if let versions = try? FileManager.default.contentsOfDirectory(at: nvmRoot, includingPropertiesForKeys: nil) {
+            directories += versions
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+                .map { $0.appendingPathComponent("bin").path }
+        }
+
+        return directories
     }
 
     private static func candidateExecutablePaths(for command: String) -> [String] {

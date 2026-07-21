@@ -7,6 +7,7 @@ enum DeveloperTool: String, CaseIterable, Identifiable {
     case diff
     case unixTime
     case csv
+    case delimiter
     case cron
 
     var id: String { rawValue }
@@ -18,6 +19,7 @@ enum DeveloperTool: String, CaseIterable, Identifiable {
         case .diff:    "Text Diff Checker"
         case .unixTime:"Unix Time Converter"
         case .csv:     "CSV / JSON Converter"
+        case .delimiter:"Delimiter Builder"
         case .cron:    "Cron Job Parser"
         }
     }
@@ -29,6 +31,7 @@ enum DeveloperTool: String, CaseIterable, Identifiable {
         case .diff:    "Compare text line by line"
         case .unixTime:"Convert epoch seconds or milliseconds"
         case .csv:     "Convert CSV to JSON and JSON to CSV"
+        case .delimiter:"Join lines with delimiters and quotes"
         case .cron:    "Explain schedules and next runs"
         }
     }
@@ -40,6 +43,7 @@ enum DeveloperTool: String, CaseIterable, Identifiable {
         case .diff:    "arrow.left.arrow.right"
         case .unixTime:"clock"
         case .csv:     "tablecells"
+        case .delimiter:"text.line.last.and.arrowtriangle.forward"
         case .cron:    "calendar.badge.clock"
         }
     }
@@ -68,6 +72,7 @@ struct DeveloperToolsView: View {
                 case .diff:    TextDiffCheckerView()
                 case .unixTime:UnixTimeConverterView()
                 case .csv:     CSVJSONConverterView()
+                case .delimiter:DelimiterBuilderView()
                 case .cron:    CronParserView()
                 }
             }
@@ -370,6 +375,117 @@ private struct CSVJSONConverterView: View {
         case .jsonToCSV: input = "[\n  {\"name\":\"Tidy\",\"role\":\"Grammar assistant\"},\n  {\"name\":\"DevTools\",\"role\":\"Utilities\"}\n]"
         }
         convert()
+    }
+}
+
+private enum DelimiterPreset: String, CaseIterable, Identifiable {
+    case comma = "Comma (,)"
+    case period = "Period (.)"
+    case semicolon = "Semicolon (;)"
+    case pipe = "Pipe (|)"
+    case space = "Space"
+    case custom = "Custom"
+
+    var id: String { rawValue }
+
+    var value: String? {
+        switch self {
+        case .comma: ","
+        case .period: "."
+        case .semicolon: ";"
+        case .pipe: "|"
+        case .space: " "
+        case .custom: nil
+        }
+    }
+}
+
+private struct DelimiterBuilderView: View {
+    @State private var input = "1\n2\n3\n4"
+    @State private var preset: DelimiterPreset = .comma
+    @State private var customDelimiter = ", "
+    @State private var quoteStyle: DelimiterQuoteStyle = .none
+    @State private var result = DelimiterTool.convert(
+        "1\n2\n3\n4",
+        delimiter: ",",
+        quoteStyle: .none
+    )
+
+    private var delimiter: String {
+        preset.value ?? customDelimiter
+    }
+
+    var body: some View {
+        ToolScreen(
+            title: DeveloperTool.delimiter.title,
+            subtitle: "Turn one value per line into a delimited list with optional string quotes.",
+            status: result.status,
+            isError: result.isError
+        ) {
+            Button("Convert") { convert() }
+            Button("Copy Output") { Pasteboard.copy(result.output) }
+            Button("Clear") { input = ""; convert() }
+        } content: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Delimiter")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Delimiter", selection: $preset) {
+                            ForEach(DelimiterPreset.allCases) { preset in
+                                Text(preset.rawValue).tag(preset)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+
+                    if preset == .custom {
+                        LabeledTextField(
+                            title: "Custom delimiter",
+                            text: $customDelimiter,
+                            prompt: "e.g. , or ::"
+                        )
+                        .frame(width: 180)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Value style")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Value style", selection: $quoteStyle) {
+                            ForEach(DelimiterQuoteStyle.allCases) { style in
+                                Text(style.rawValue).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 300)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 12) {
+                    CodeEditorPanel(
+                        title: "One Value Per Line",
+                        text: $input,
+                        placeholder: "1\n2\n3\n4"
+                    ) {
+                        Button("Sample") { input = "1\n2\n3\n4"; convert() }
+                    }
+                    OutputPanel(title: "Delimited Output", text: result.output, isError: result.isError)
+                }
+            }
+        }
+        .onChange(of: input) { _, _ in convert() }
+        .onChange(of: preset) { _, _ in convert() }
+        .onChange(of: customDelimiter) { _, _ in convert() }
+        .onChange(of: quoteStyle) { _, _ in convert() }
+    }
+
+    private func convert() {
+        result = DelimiterTool.convert(input, delimiter: delimiter, quoteStyle: quoteStyle)
     }
 }
 

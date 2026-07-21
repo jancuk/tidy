@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.clipboardMaxEntries) private var maxEntries         = 200
     @AppStorage(AppDefaults.clipboardMaxAgeDays) private var maxAgeDays         = 7
     @AppStorage(AppDefaults.openCodeModel)       private var openCodeModel      = "deepseek-v4-flash-free"
+    @AppStorage(AppDefaults.deepSeekModel)       private var deepSeekModel      = "deepseek-v4-flash"
     @AppStorage(AppDefaults.ollamaBaseURL)       private var ollamaBaseURL      = "http://localhost:11434"
     @AppStorage(AppDefaults.ollamaModel)         private var ollamaModel        = "gnokit/improve-grammar"
     @AppStorage(AppDefaults.codexCLIPath)        private var codexCLIPath       = "codex"
@@ -272,6 +273,17 @@ struct SettingsView: View {
                 }
             }
 
+            if grammarProvider == GrammarProviderID.deepSeek.rawValue {
+                settingsSection(title: "DeepSeek") {
+                    settingsCard {
+                        settingsTextRow(label: "Model", systemImage: "cpu", binding: $deepSeekModel, prompt: "e.g. deepseek-v4-flash")
+                    }
+                    Text("Uses DeepSeek's Anthropic-compatible Messages API.")
+                        .font(.footnote)
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                }
+            }
+
             if grammarProvider == GrammarProviderID.ollama.rawValue {
                 settingsSection(title: "Ollama") {
                     settingsCard {
@@ -301,6 +313,7 @@ struct SettingsView: View {
                             isSignedIn: codexLogin.isSignedIn,
                             onRefresh: { codexLogin.refreshStatus(command: codexCLIPath) },
                             onSignIn: { codexLogin.start(command: codexCLIPath) },
+                            onReauthenticate: { codexLogin.reauthenticate(command: codexCLIPath) },
                             onCancel: { codexLogin.cancel() },
                             onOpenURL: { codexLogin.openAuthURL() }
                         )
@@ -368,6 +381,7 @@ struct SettingsView: View {
         isSignedIn: Bool,
         onRefresh: @escaping () -> Void,
         onSignIn: @escaping () -> Void,
+        onReauthenticate: (() -> Void)? = nil,
         onCancel: @escaping () -> Void,
         onOpenURL: @escaping () -> Void
     ) -> some View {
@@ -393,6 +407,10 @@ struct SettingsView: View {
                 } else if !isSignedIn {
                     Button("Sign In") { onSignIn() }
                         .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                } else if let onReauthenticate {
+                    Button("Sign In Again") { onReauthenticate() }
+                        .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
             }

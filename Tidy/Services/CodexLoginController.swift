@@ -45,7 +45,7 @@ final class CodexLoginController: ObservableObject {
             let process = Process()
             process.executableURL = executable
             process.arguments = ["login", "--device-auth"]
-            process.environment = CodexCLIService.codexEnvironment()
+            process.environment = CodexCLIService.codexEnvironment(executableURL: executable)
 
             let outputPipe = Pipe()
             let errorPipe = Pipe()
@@ -69,6 +69,25 @@ final class CodexLoginController: ObservableObject {
             isSigningIn = false
             updateStatus(error.localizedDescription)
             output += "\n\(error.localizedDescription)"
+        }
+    }
+
+    func reauthenticate(command: String) {
+        guard !isSigningIn else { return }
+        isSigningIn = true
+        updateStatus("Resetting expired session")
+        output = "Signing out of the saved Codex session..."
+
+        Task {
+            if let errorMessage = await signOut(command: command) {
+                isSigningIn = false
+                updateStatus(errorMessage)
+                output = errorMessage
+                return
+            }
+
+            isSigningIn = false
+            start(command: command)
         }
     }
 
@@ -180,7 +199,7 @@ final class CodexLoginController: ObservableObject {
                 let process = Process()
                 process.executableURL = executable
                 process.arguments = ["login", "status"]
-                process.environment = CodexCLIService.codexEnvironment()
+                process.environment = CodexCLIService.codexEnvironment(executableURL: executable)
 
                 let pipe = Pipe()
                 process.standardOutput = pipe
@@ -193,6 +212,32 @@ final class CodexLoginController: ObservableObject {
                 let text = String(data: data, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 return text?.isEmpty == false ? stripANSI(text ?? "") : "Not signed in"
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
+    }
+
+    private func signOut(command: String) async -> String? {
+        await Task.detached {
+            do {
+                let executable = try CodexCLIService.resolvedExecutableURL(for: command)
+                let process = Process()
+                process.executableURL = executable
+                process.arguments = ["logout"]
+                process.environment = CodexCLIService.codexEnvironment(executableURL: executable)
+
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+                try process.run()
+                process.waitUntilExit()
+
+                guard process.terminationStatus != 0 else { return nil }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let message = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return message?.isEmpty == false ? stripANSI(message ?? "") : "Could not reset the Codex session."
             } catch {
                 return error.localizedDescription
             }

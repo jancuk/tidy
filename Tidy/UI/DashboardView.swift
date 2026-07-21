@@ -306,11 +306,23 @@ struct HomeView: View {
             }
 
             statusPill(title: providerDisplayName, icon: "cpu", tint: .blue)
-            statusPill(
-                title: autoSuggestEnabled ? "Auto-suggest on" : "Auto-suggest off",
-                icon: autoSuggestEnabled ? "checkmark.circle.fill" : "xmark.circle.fill",
-                tint: autoSuggestEnabled ? .green : .orange
-            )
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    autoSuggestEnabled.toggle()
+                }
+            } label: {
+                statusPill(
+                    title: autoSuggestEnabled ? "Auto-suggest on" : "Auto-suggest off",
+                    icon: autoSuggestEnabled ? "checkmark.circle.fill" : "xmark.circle.fill",
+                    tint: autoSuggestEnabled ? .green : .orange
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(autoSuggestEnabled ? "Turn off auto-suggest" : "Turn on auto-suggest")
+            .accessibilityLabel("Auto-suggest")
+            .accessibilityValue(autoSuggestEnabled ? "On" : "Off")
+            .accessibilityHint(autoSuggestEnabled ? "Turn off auto-suggest" : "Turn on auto-suggest")
         }
     }
 

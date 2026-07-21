@@ -219,7 +219,7 @@ final class AskAIController {
         case .claudeCLI:
             model.claudeSessionID = sessionID
             model.claudeSessionFolderKey = folderKey
-        case .gemini, .openAI, .anthropic, .languageTool, .openCode, .ollama:
+        case .gemini, .openAI, .anthropic, .deepSeek, .languageTool, .openCode, .ollama:
             break
         }
     }
@@ -795,7 +795,7 @@ private enum AskAIProgressSteps {
                 "Claude Code is reading the question",
                 "Claude Code is drafting the answer"
             ]
-        case .gemini, .openAI, .anthropic, .openCode, .ollama:
+        case .gemini, .openAI, .anthropic, .deepSeek, .openCode, .ollama:
             let name = providerID.displayName
             return hasFolders ? [
                 "Preparing local folder context",

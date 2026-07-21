@@ -11,6 +11,7 @@ enum GrammarProviderError: LocalizedError {
     case invalidResponse
     case httpError(status: Int, body: String)
     case emptyCorrection
+    case responseTruncated(String)
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ enum GrammarProviderError: LocalizedError {
             return "API error \(status): \(snippet)"
         case .emptyCorrection:
             return "The grammar provider returned an empty correction."
+        case .responseTruncated(let provider):
+            return "\(provider) used its response limit before returning corrected text. Please try again."
         }
     }
 }
@@ -36,6 +39,8 @@ enum GrammarProviderFactory {
             OpenAIProvider()
         case .anthropic:
             AnthropicProvider()
+        case .deepSeek:
+            DeepSeekProvider()
         case .languageTool:
             LanguageToolProvider()
         case .openCode:

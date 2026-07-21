@@ -45,6 +45,32 @@ struct TidyTests {
         #expect(result.nextRuns.isEmpty == false)
     }
 
+    @Test func delimiterToolJoinsLinesWithComma() {
+        let result = DelimiterTool.convert("1\n2\n3\n4", delimiter: ",", quoteStyle: .none)
+
+        #expect(result.output == "1,2,3,4")
+        #expect(result.status == "Converted 4 values.")
+        #expect(result.isError == false)
+    }
+
+    @Test func delimiterToolSupportsDoubleAndSingleQuotes() {
+        let doubleQuoted = DelimiterTool.convert("1\n2", delimiter: ",", quoteStyle: .double)
+        let singleQuoted = DelimiterTool.convert("1\n2", delimiter: ",", quoteStyle: .single)
+
+        #expect(doubleQuoted.output == "\"1\",\"2\"")
+        #expect(singleQuoted.output == "'1','2'")
+    }
+
+    @Test func delimiterToolTrimsBlankLinesAndEscapesQuotes() {
+        let result = DelimiterTool.convert(
+            "  first  \n\nO'Reilly\npath\\file",
+            delimiter: ".",
+            quoteStyle: .single
+        )
+
+        #expect(result.output == "'first'.'O\\'Reilly'.'path\\\\file'")
+    }
+
     @Test func grammarPromptDoesNotExposeAssistantIdentity() async throws {
         #expect(GrammarProviderFactory.prompt.contains("You are") == false)
         #expect(GrammarProviderFactory.prompt.contains("grammar-correction transformer") == false)
@@ -253,6 +279,15 @@ struct TidyTests {
         #expect(!CodexLoginController.statusMeansSignedIn("Not signed in"))
     }
 
+    @Test func codexEnvironmentPrependsResolvedExecutableDirectory() {
+        let executable = URL(fileURLWithPath: "/tmp/tidy-nvm/node/bin/codex")
+        let environment = CodexCLIService.codexEnvironment(executableURL: executable)
+        let pathEntries = environment["PATH"]?.split(separator: ":").map(String.init)
+
+        #expect(pathEntries?.first == "/tmp/tidy-nvm/node/bin")
+        #expect(environment["CODEX_HOME"] == CodexCLIService.codexHomeURL.path)
+    }
+
     @Test func codexCLIJSONProgressParsesThreadAndCommandEvents() throws {
         let thread = CodexCLIJSONEventParser.snapshot(from: #"{"type":"thread.started","thread_id":"abc-123"}"#)
         #expect(thread?.threadID == "abc-123")
@@ -260,6 +295,25 @@ struct TidyTests {
 
         let command = CodexCLIJSONEventParser.snapshot(from: #"{"type":"item.started","item":{"type":"command_execution","command":"/bin/zsh -lc rg AskAI"}}"#)
         #expect(command?.progressMessage == "Codex is running `rg AskAI`")
+    }
+
+    @Test func codexCLIJSONFailureExtractsFinalError() {
+        let output = """
+        {"type":"thread.started","thread_id":"abc-123"}
+        {"type":"error","message":"Session expired"}
+        {"type":"turn.failed","error":{"message":"Please log in again"}}
+        """
+
+        #expect(CodexCLIJSONEventParser.failureMessage(from: output) == "Please log in again")
+    }
+
+    @Test func codexCLIExpiredSessionErrorIsActionable() {
+        let error = CodexCLIError.failed(
+            status: 1,
+            output: "Your refresh token was revoked. Please log out and sign in again."
+        )
+
+        #expect(error.errorDescription == "Your Codex session expired. Open Settings -> Model and click Sign In Again.")
     }
 
     @Test func claudeCodeStreamParserExtractsSessionAndResult() throws {
@@ -288,6 +342,59 @@ struct TidyTests {
         let provider = GrammarProviderFactory.provider(for: .claudeCLI)
         #expect(provider.id == GrammarProviderID.claudeCLI.rawValue)
         #expect(provider.displayName == "Claude (Subscription)")
+    }
+
+    @Test func deepSeekProviderIDHasExpectedProperties() {
+        #expect(GrammarProviderID.deepSeek.rawValue == "deepseek")
+        #expect(GrammarProviderID.deepSeek.displayName == "DeepSeek")
+        #expect(GrammarProviderID.deepSeek.requiresAPIKey)
+    }
+
+    @Test func deepSeekModelDefaultsToV4Flash() {
+        let defaults = UserDefaults(suiteName: "test.tidy.deepseek")!
+        defaults.registerTidyDefaults()
+        #expect(defaults.string(forKey: AppDefaults.deepSeekModel) == "deepseek-v4-flash")
+        defaults.removePersistentDomain(forName: "test.tidy.deepseek")
+    }
+
+    @Test func grammarFactoryReturnsDeepSeekProvider() {
+        let provider = GrammarProviderFactory.provider(for: .deepSeek)
+        #expect(provider.id == GrammarProviderID.deepSeek.rawValue)
+        #expect(provider.displayName == "DeepSeek")
+    }
+
+    @Test func deepSeekRequestMatchesAnthropicCompatibleAPI() throws {
+        let request = try DeepSeekProvider.makeRequest(
+            text: "Reply with exactly: pong",
+            apiKey: "sk-key",
+            model: "deepseek-v4-flash"
+        )
+        let data = try #require(request.httpBody)
+        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let messages = try #require(body["messages"] as? [[String: Any]])
+
+        #expect(request.url?.absoluteString == "https://api.deepseek.com/anthropic/messages")
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-key")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(body["model"] as? String == "deepseek-v4-flash")
+        #expect(body["max_tokens"] as? Int == 1_024)
+        #expect(messages.first?["role"] as? String == "user")
+        #expect((messages.first?["content"] as? String)?.contains("Reply with exactly: pong") == true)
+    }
+
+    @Test func deepSeekResponseSkipsThinkingAndReturnsText() throws {
+        let data = Data(#"{"content":[{"type":"thinking","thinking":"Reasoning"},{"type":"text","text":"Corrected text"}],"stop_reason":"end_turn"}"#.utf8)
+
+        #expect(try DeepSeekProvider.correctedText(from: data) == "Corrected text")
+    }
+
+    @Test func deepSeekResponseReportsReasoningTruncation() {
+        let data = Data(#"{"content":[{"type":"thinking","thinking":"Reasoning only"}],"stop_reason":"max_tokens"}"#.utf8)
+
+        #expect(throws: GrammarProviderError.self) {
+            try DeepSeekProvider.correctedText(from: data)
+        }
     }
 
     private func makeTemporaryFolder() throws -> URL {

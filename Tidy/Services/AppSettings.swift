@@ -102,6 +102,7 @@ enum AppDefaults {
     static let didCompleteFirstRun = "didCompleteFirstRun"
     static let autoSuggestEnabled = "autoSuggestEnabled"
     static let openCodeModel = "openCodeModel"
+    static let deepSeekModel = "deepSeekModel"
     static let ollamaBaseURL = "ollamaBaseURL"
     static let ollamaModel = "ollamaModel"
     static let codexCLIPath = "codexCLIPath"
@@ -122,6 +123,7 @@ extension UserDefaults {
             AppDefaults.didCompleteFirstRun: false,
             AppDefaults.autoSuggestEnabled: true,
             AppDefaults.openCodeModel: "deepseek-v4-flash-free",
+            AppDefaults.deepSeekModel: "deepseek-v4-flash",
             AppDefaults.ollamaBaseURL: "http://localhost:11434",
             AppDefaults.ollamaModel: "gnokit/improve-grammar",
             AppDefaults.codexCLIPath: "codex",

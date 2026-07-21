@@ -342,6 +342,54 @@ enum TextDiffTool {
     }
 }
 
+enum DelimiterQuoteStyle: String, CaseIterable, Identifiable {
+    case none = "Plain"
+    case double = "Double quotes"
+    case single = "Single quotes"
+
+    var id: String { rawValue }
+}
+
+enum DelimiterTool {
+    static func convert(
+        _ input: String,
+        delimiter: String,
+        quoteStyle: DelimiterQuoteStyle
+    ) -> ToolResult {
+        let values = input
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !values.isEmpty else {
+            return .success("", status: "Enter one value per line.")
+        }
+
+        let output = values
+            .map { wrap($0, style: quoteStyle) }
+            .joined(separator: delimiter)
+        let noun = values.count == 1 ? "value" : "values"
+        return .success(output, status: "Converted \(values.count) \(noun).")
+    }
+
+    private static func wrap(_ value: String, style: DelimiterQuoteStyle) -> String {
+        switch style {
+        case .none:
+            return value
+        case .double:
+            return "\"\(escape(value, quote: "\""))\""
+        case .single:
+            return "'\(escape(value, quote: "'"))'"
+        }
+    }
+
+    private static func escape(_ value: String, quote: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: quote, with: "\\\(quote)")
+    }
+}
+
 struct CronParseResult {
     let description: String
     let fields: [(String, String)]

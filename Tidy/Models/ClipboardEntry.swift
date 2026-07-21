@@ -30,6 +30,7 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
     case gemini
     case openAI = "openai"
     case anthropic
+    case deepSeek = "deepseek"
     case languageTool = "languagetool"
     case openCode = "opencode"
     case ollama
@@ -46,6 +47,8 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
             "OpenAI"
         case .anthropic:
             "Anthropic"
+        case .deepSeek:
+            "DeepSeek"
         case .languageTool:
             "LanguageTool"
         case .openCode:
