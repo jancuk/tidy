@@ -193,6 +193,115 @@ struct TidyTests {
         #expect(DashboardSection.allCases.contains(.settings))
     }
 
+    @Test func dashboardSectionIncludesJira() {
+        #expect(DashboardSection.allCases.contains(.jira))
+    }
+
+    @Test func jiraActiveSprintJQLIncludesOptionalAssignee() {
+        let allIssues = JiraAPIClient.activeSprintJQL(projectKey: "ENG", assigneeAccountID: nil)
+        let myIssues = JiraAPIClient.activeSprintJQL(projectKey: "ENG", assigneeAccountID: "abc:123")
+
+        #expect(allIssues.contains("project = \"ENG\""))
+        #expect(allIssues.contains("sprint in openSprints()"))
+        #expect(!allIssues.contains("assignee ="))
+        #expect(myIssues.contains("assignee = \"abc:123\""))
+    }
+
+    @Test func jiraJQLEscapesQuotedValues() {
+        let jql = JiraAPIClient.activeSprintJQL(projectKey: "A\\\"B", assigneeAccountID: nil)
+
+        #expect(jql.contains("project = \"A\\\\\\\"B\""))
+    }
+
+    @Test func jiraCommentUsesAtlassianDocumentFormat() throws {
+        let data = try JiraAPIClient.commentBody(for: "Ready to ship")
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let body = try #require(json["body"] as? [String: Any])
+        let content = try #require(body["content"] as? [[String: Any]])
+        let textNodes = try #require(content.first?["content"] as? [[String: Any]])
+
+        #expect(body["version"] as? Int == 1)
+        #expect(body["type"] as? String == "doc")
+        #expect(textNodes.first?["text"] as? String == "Ready to ship")
+    }
+
+    @Test func jiraMultilineCommentCreatesSeparateADFParagraphs() throws {
+        let data = try JiraAPIClient.commentBody(for: "First line\nSecond line")
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let body = try #require(json["body"] as? [String: Any])
+        let content = try #require(body["content"] as? [[String: Any]])
+
+        #expect(content.count == 2)
+    }
+
+    @Test func jiraCommentDecodesRichTextAsPlainText() throws {
+        let data = Data("""
+        {
+          "id": "101",
+          "author": {"accountId": "me", "displayName": "Azhar Amir"},
+          "body": {
+            "type": "doc",
+            "content": [
+              {"type": "paragraph", "content": [{"type": "text", "text": "First"}]},
+              {"type": "paragraph", "content": [{"type": "text", "text": "Second"}]}
+            ]
+          },
+          "created": "2026-07-22T10:00:00.000+0000",
+          "updated": "2026-07-22T10:01:00.000+0000"
+        }
+        """.utf8)
+        let comment = try JSONDecoder().decode(JiraComment.self, from: data)
+
+        #expect(comment.text == "First\nSecond")
+        #expect(comment.wasEdited)
+    }
+
+    @Test func jiraIssueUsesStatusCategoryForWorkflowFilter() throws {
+        let data = Data("""
+        {
+          "id": "1",
+          "key": "ENG-1",
+          "fields": {
+            "summary": "Ship it",
+            "status": {
+              "name": "Ready for release",
+              "statusCategory": {"key": "done", "name": "Done", "colorName": "green"}
+            },
+            "priority": {"name": "High"},
+            "assignee": null,
+            "issuetype": {"name": "Task"},
+            "updated": "2026-07-22T10:00:00.000+0000"
+          }
+        }
+        """.utf8)
+        let issue = try JSONDecoder().decode(JiraIssue.self, from: data)
+
+        #expect(issue.statusGroup == .done)
+        #expect(issue.updatedDate != nil)
+    }
+
+    @Test func jiraWorkflowStatusesMatchConfiguredOrderAndIgnoreCase() {
+        #expect(JiraWorkflowStatus.allCases.map(\.rawValue) == [
+            "To Do",
+            "Code Review",
+            "Ready for Release",
+            "Done/Release Ready",
+            "In QA",
+            "In Progress"
+        ])
+        #expect(JiraWorkflowStatus.inQA.matches("in qa"))
+        #expect(JiraWorkflowStatus.readyForRelease.matches("  Ready for Release  "))
+    }
+
+    @Test func jiraDefaultsStartEmpty() {
+        let defaults = UserDefaults(suiteName: "test.tidy.jira")!
+        defaults.registerTidyDefaults()
+
+        #expect(defaults.string(forKey: AppDefaults.jiraSiteURL) == "")
+        #expect(defaults.string(forKey: AppDefaults.jiraProjectKey) == "")
+        defaults.removePersistentDomain(forName: "test.tidy.jira")
+    }
+
     @Test func fileTidyScansRuleBasedSuggestions() throws {
         let root = try makeTemporaryFolder()
         defer { try? FileManager.default.removeItem(at: root) }

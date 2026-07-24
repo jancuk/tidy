@@ -17,12 +17,17 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.codexCLIModel)       private var codexCLIModel      = ""
     @AppStorage(AppDefaults.claudeCLIPath)       private var claudeCLIPath      = "claude"
     @AppStorage(AppDefaults.appearanceMode)      private var appearanceMode     = "system"
+    @AppStorage(AppDefaults.jiraSiteURL)         private var jiraSiteURL        = ""
+    @AppStorage(AppDefaults.jiraEmail)           private var jiraEmail          = ""
 
     @State private var launchAtLogin   = false
     @State private var keyValues: [String: String] = [:]
     @State private var statusMessage   = ""
     @State private var selectedTab     = SettingsTab.general
     @State private var claudeAuthCode  = ""
+    @State private var jiraAPIToken    = ""
+    @State private var jiraStatus      = ""
+    @State private var isTestingJira   = false
     @StateObject private var codexLogin  = CodexLoginController()
     @StateObject private var claudeLogin = ClaudeLoginController()
 
@@ -39,6 +44,7 @@ struct SettingsView: View {
             loadKeychainValues()
             codexLogin.refreshStatus(command: codexCLIPath)
             claudeLogin.refreshStatus(command: claudeCLIPath)
+            jiraAPIToken = KeychainStore.read(key: JiraConfiguration.tokenKey) ?? ""
         }
     }
 
@@ -70,6 +76,7 @@ struct SettingsView: View {
         case model     = "Model"
         case clipboard = "Clipboard"
         case hotkeys   = "Hotkeys"
+        case jira      = "Jira"
 
         var systemImage: String {
             switch self {
@@ -77,6 +84,7 @@ struct SettingsView: View {
             case .model:     "cpu"
             case .clipboard: "doc.on.clipboard"
             case .hotkeys:   "keyboard"
+            case .jira:      "shippingbox"
             }
         }
     }
@@ -126,6 +134,7 @@ struct SettingsView: View {
                 case .model:     modelContent
                 case .clipboard: clipboardContent
                 case .hotkeys:   hotkeysContent
+                case .jira:      jiraContent
                 }
             }
             .padding(20)
@@ -508,6 +517,88 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Jira tab
+
+    private var jiraContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            settingsSection(title: "Jira Cloud Connection") {
+                settingsCard {
+                    settingsTextRow(
+                        label: "Site URL",
+                        systemImage: "globe",
+                        binding: $jiraSiteURL,
+                        prompt: "https://company.atlassian.net"
+                    )
+                    Divider().opacity(0.5)
+                    settingsTextRow(
+                        label: "Account email",
+                        systemImage: "envelope",
+                        binding: $jiraEmail,
+                        prompt: "you@company.com"
+                    )
+                    Divider().opacity(0.5)
+                    HStack {
+                        Label("API token", systemImage: "key")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(NSColor.labelColor))
+                        Spacer()
+                        SecureField("Atlassian API token", text: $jiraAPIToken)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 260)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Save Connection") { saveJiraConnection() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+
+                    Button {
+                        testJiraConnection()
+                    } label: {
+                        if isTestingJira {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Testing…")
+                            }
+                        } else {
+                            Text("Test Connection")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isTestingJira || jiraSiteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || jiraEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || jiraAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Link(
+                        "Create API Token",
+                        destination: URL(string: "https://id.atlassian.com/manage-profile/security/api-tokens")!
+                    )
+                    .font(.system(size: 11))
+
+                    Spacer()
+                }
+            }
+
+            settingsSection(title: "Security") {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(Color.green)
+                    Text("Your API token is stored in macOS Keychain. Tidy uses your email and token only to talk directly to the Jira Cloud site you enter.")
+                        .font(.footnote)
+                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                }
+            }
+
+            if !jiraStatus.isEmpty {
+                Text(jiraStatus)
+                    .font(.footnote)
+                    .foregroundStyle(jiraStatus.hasPrefix("Connected") || jiraStatus.hasPrefix("Saved") ? Color.green : Color.red)
+            }
+        }
+    }
+
     // MARK: - Reusable components
 
     @ViewBuilder
@@ -585,5 +676,36 @@ struct SettingsView: View {
 
     private func applyRetention() {
         appState.clipboardService.applyRetention(maxEntries: maxEntries, maxAgeDays: maxAgeDays)
+    }
+
+    private func saveJiraConnection() {
+        jiraSiteURL = jiraSiteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        jiraEmail = jiraEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = jiraAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if token.isEmpty {
+                KeychainStore.delete(key: JiraConfiguration.tokenKey)
+            } else {
+                try KeychainStore.save(token, key: JiraConfiguration.tokenKey)
+            }
+            appState.jiraService.configurationDidChange()
+            jiraStatus = "Saved Jira connection securely."
+        } catch {
+            jiraStatus = error.localizedDescription
+        }
+    }
+
+    private func testJiraConnection() {
+        saveJiraConnection()
+        isTestingJira = true
+        Task {
+            defer { isTestingJira = false }
+            do {
+                let user = try await appState.jiraService.testConnection()
+                jiraStatus = "Connected as \(user.displayName). Account ID: \(user.accountId)"
+            } catch {
+                jiraStatus = error.localizedDescription
+            }
+        }
     }
 }

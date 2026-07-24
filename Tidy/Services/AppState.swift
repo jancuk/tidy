@@ -8,6 +8,12 @@ final class AppState: ObservableObject {
     let correctionLogStore: CorrectionLogStore
     let aiRequestLogStore: AIRequestLogStore
     let suggestionMonitor: SuggestionMonitor
+    let jiraService: JiraService
+    @Published var selectedDashboardSection: DashboardSection {
+        didSet {
+            UserDefaults.standard.set(selectedDashboardSection.rawValue, forKey: AppDefaults.dashboardSection)
+        }
+    }
 
     private let hotkeyManager = HotkeyManager()
     private let hud = HUDController()
@@ -19,6 +25,9 @@ final class AppState: ObservableObject {
 
     init() {
         UserDefaults.standard.registerTidyDefaults()
+        selectedDashboardSection = DashboardSection(
+            rawValue: UserDefaults.standard.string(forKey: AppDefaults.dashboardSection) ?? ""
+        ) ?? .home
         clipboardService = ClipboardService()
         correctionLogStore = CorrectionLogStore()
         aiRequestLogStore = AIRequestLogStore()
@@ -26,6 +35,7 @@ final class AppState: ObservableObject {
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
         askAIController = AskAIController(requestLogStore: aiRequestLogStore)
         suggestionMonitor = SuggestionMonitor()
+        jiraService = JiraService()
 
         hotkeyManager.onGrammar = { [weak self] in
             Task { @MainActor in self?.grammarService.tidySelectedText() }
@@ -82,6 +92,33 @@ final class AppState: ObservableObject {
 
     func openAskAI() {
         askAIController.show()
+    }
+
+    func openJira(issueID: String? = nil) {
+        selectedDashboardSection = .jira
+        if let issueID { jiraService.requestIssue(issueID) }
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.title == "Tidy" })?.makeKeyAndOrderFront(nil)
+    }
+
+    func openJiraNotifications() {
+        selectedDashboardSection = .jira
+        jiraService.requestNotificationCenter()
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.title == "Tidy" })?.makeKeyAndOrderFront(nil)
+    }
+
+    func refreshJira() async {
+        let defaults = UserDefaults.standard
+        let projectKey = defaults.string(forKey: AppDefaults.jiraProjectKey) ?? ""
+        guard await jiraService.refreshConfigurationStatus(),
+              !projectKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        await jiraService.loadActiveSprintIssues(
+            projectKey: projectKey,
+            assigneeAccountID: defaults.string(forKey: AppDefaults.jiraAssigneeAccountID)
+        )
     }
 
     func tidyClipboardText() {

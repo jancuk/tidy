@@ -109,6 +109,13 @@ enum AppDefaults {
     static let codexCLIModel = "codexCLIModel"
     static let claudeCLIPath = "claudeCLIPath"
     static let appearanceMode = "appearanceMode"
+    static let jiraSiteURL = "jiraSiteURL"
+    static let jiraEmail = "jiraEmail"
+    static let jiraProjectKey = "jiraProjectKey"
+    static let jiraAssigneeAccountID = "jiraAssigneeAccountID"
+    static let jiraNotificationsLastSeenAt = "jiraNotificationsLastSeenAt"
+    static let dashboardSection = "dashboardSection"
+    static let jiraWorkspaceMode = "jiraWorkspaceMode"
 }
 
 extension UserDefaults {
@@ -129,7 +136,13 @@ extension UserDefaults {
             AppDefaults.codexCLIPath: "codex",
             AppDefaults.codexCLIModel: "",
             AppDefaults.claudeCLIPath: "claude",
-            AppDefaults.appearanceMode: "system"
+            AppDefaults.appearanceMode: "system",
+            AppDefaults.jiraSiteURL: "",
+            AppDefaults.jiraEmail: "",
+            AppDefaults.jiraProjectKey: "",
+            AppDefaults.jiraAssigneeAccountID: "",
+            AppDefaults.dashboardSection: DashboardSection.home.rawValue,
+            AppDefaults.jiraWorkspaceMode: "issues"
         ])
     }
 }

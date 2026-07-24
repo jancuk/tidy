@@ -18,6 +18,7 @@
 - **Ask AI** — press `⌃⌥J` for a Quick AI chat panel with source slots for MCP, llm-wiki, and local folder context.
 - **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
 - **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
+- **Jira workspace** — browse and multi-filter active-sprint tickets, understand status/priority/assignee changes from the notification center and menu bar, and read, post, or edit comments without leaving Tidy.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
 - **Light / Dark / System** appearance, user-selectable from Settings.
 - **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool.
@@ -84,6 +85,12 @@ Gemini also checks the `GEMINI_API_KEY` environment variable before falling back
 
 Tidy needs Accessibility access to read selected text and paste the corrected version back. macOS will prompt on first use, or go to **System Settings → Privacy & Security → Accessibility**.
 
+### 6. Connect Jira Cloud
+
+Open **Settings → Jira**, enter your `https://company.atlassian.net` site URL, Atlassian account email, and an API token, then click **Test Connection**. Open **Jira** from the sidebar, enter a project key, and choose **Use Me** to filter the active sprint to your assigned tickets.
+
+The Jira API token is stored in macOS Keychain. Tidy uses Jira Cloud's REST API directly and does not persist ticket content locally.
+
 ## Roadmap
 
 Tidy's long-term direction is a personal Mac assistant for cleaning up text, files, and daily developer context.
@@ -126,6 +133,7 @@ These integrations should be opt-in, transparent about what data is read, and av
 ## Privacy And Security
 
 - API keys are stored in macOS Keychain, not in `UserDefaults` or project files.
+- Jira ticket data is fetched on demand and is not persisted locally.
 - Clipboard history is stored locally.
 - Clipboard capture skips common password managers and transient pasteboard content.
 - Selected text is sent only to the grammar provider you configure. Cloud providers receive the selected text for grammar correction.

@@ -9,6 +9,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     case developerTools
     case correctionLog
     case aiRequestLog
+    case jira
     case settings
 
     var id: String { rawValue }
@@ -21,6 +22,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .developerTools: "Dev Tools"
         case .correctionLog:  "Corrections"
         case .aiRequestLog:   "AI Requests"
+        case .jira:           "Jira"
         case .settings:       "Settings"
         }
     }
@@ -33,6 +35,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .developerTools: "Developer Tools"
         case .correctionLog:  "Correction Log"
         case .aiRequestLog:   "AI Requests"
+        case .jira:           "Jira Active Sprint"
         case .settings:       "Settings"
         }
     }
@@ -45,6 +48,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle"
         case .aiRequestLog:   "network"
+        case .jira:           "shippingbox"
         case .settings:       "gear"
         }
     }
@@ -57,6 +61,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle.fill"
         case .aiRequestLog:   "network"
+        case .jira:           "shippingbox.fill"
         case .settings:       "gear"
         }
     }
@@ -168,14 +173,12 @@ struct SidebarView: View {
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var selection: DashboardSection = .home
-
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(selection: $selection)
+            SidebarView(selection: $appState.selectedDashboardSection)
 
             Group {
-                switch selection {
+                switch appState.selectedDashboardSection {
                 case .home:
                     HomeView()
                         .environmentObject(appState.correctionLogStore)
@@ -192,6 +195,9 @@ struct DashboardView: View {
                 case .aiRequestLog:
                     AIRequestLogView()
                         .environmentObject(appState.aiRequestLogStore)
+                case .jira:
+                    JiraView()
+                        .environmentObject(appState.jiraService)
                 case .settings:
                     SettingsView()
                         .environmentObject(appState)
