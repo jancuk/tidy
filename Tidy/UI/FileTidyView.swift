@@ -33,6 +33,11 @@ final class FileTidyViewModel: ObservableObject {
         panel.prompt = "Scan Folder"
         panel.message = "Tidy scans locally and shows every move before anything changes."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard FolderAccessPolicy.allowsExplicitInspection(of: url) else {
+            errorMessage = "For privacy, choose a specific folder instead of your entire home or Library folder."
+            statusMessage = "No folder was accessed."
+            return
+        }
         selectedFolder = url
         scan()
     }
@@ -155,7 +160,7 @@ struct FileTidyView: View {
             ContentUnavailableView(
                 "Preview Folder Cleanup",
                 systemImage: "folder.badge.gearshape",
-                description: Text("Select Downloads, Desktop, or a project folder. Tidy scans locally and waits for approval before moving anything.")
+                description: Text("Choose one specific folder. Tidy never scans outside it, and every proposed destination stays inside that folder.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -172,7 +177,7 @@ struct FileTidyView: View {
                     Text("File Tidy")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color(NSColor.labelColor))
-                    Text(viewModel.selectedFolder?.path ?? "Rule-based, local-only cleanup for messy folders.")
+                    Text(viewModel.selectedFolder?.path ?? "Private by default — only the folder you explicitly choose is accessed.")
                         .font(.system(size: 12))
                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                         .lineLimit(1)

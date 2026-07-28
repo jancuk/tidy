@@ -6,9 +6,7 @@ final class FileTidyUndoLogStore: ObservableObject {
     private let url: URL
 
     init() {
-        let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Tidy", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = SecureLocalStorage.applicationSupportDirectory()
         url = directory.appendingPathComponent("file-tidy-undo.json")
         load()
     }
@@ -42,6 +40,6 @@ final class FileTidyUndoLogStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(sessions) else { return }
         try? data.write(to: url, options: .atomic)
-        chmod(url.path, S_IRUSR | S_IWUSR)
+        SecureLocalStorage.protectFile(at: url)
     }
 }

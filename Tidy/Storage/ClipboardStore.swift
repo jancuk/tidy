@@ -94,12 +94,10 @@ final class ClipboardStore {
 
     private func openDatabase() {
         let fileManager = FileManager.default
-        let directory = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Tidy", isDirectory: true)
-        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = SecureLocalStorage.applicationSupportDirectory(fileManager: fileManager)
         let databaseURL = directory.appendingPathComponent("clipboard.sqlite")
         sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil)
-        chmod(databaseURL.path, S_IRUSR | S_IWUSR)
+        SecureLocalStorage.protectFile(at: databaseURL)
     }
 
     private func migrate() {

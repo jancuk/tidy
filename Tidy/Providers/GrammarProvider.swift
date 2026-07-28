@@ -19,9 +19,8 @@ enum GrammarProviderError: LocalizedError {
             return "Add your \(provider) API key in Settings first."
         case .invalidResponse:
             return "The grammar provider returned an unexpected response."
-        case .httpError(let status, let body):
-            let snippet = String(body.prefix(180))
-            return "API error \(status): \(snippet)"
+        case .httpError(let status, _):
+            return "The grammar provider returned HTTP \(status)."
         case .emptyCorrection:
             return "The grammar provider returned an empty correction."
         case .responseTruncated(let provider):

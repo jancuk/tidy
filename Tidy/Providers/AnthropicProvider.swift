@@ -23,7 +23,7 @@ struct AnthropicProvider: GrammarProvider {
             messages: [.init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text))]
         ))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await SecureHTTP.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode ?? 500 < 300 else {
             throw GrammarProviderError.invalidResponse
         }

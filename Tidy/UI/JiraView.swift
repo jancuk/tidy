@@ -1,17 +1,22 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct JiraView: View {
     @EnvironmentObject private var jiraService: JiraService
     @AppStorage(AppDefaults.jiraProjectKey) private var projectKey = ""
     @AppStorage(AppDefaults.jiraAssigneeAccountID) private var assigneeAccountID = ""
 
-    @AppStorage(AppDefaults.jiraWorkspaceMode) private var modeRawValue = JiraWorkspaceMode.issues.rawValue
+    @AppStorage(AppDefaults.jiraWorkspaceMode) private var modeRawValue = JiraWorkspaceMode.workbench.rawValue
     @State private var selectedIssueID: JiraIssue.ID?
     @State private var searchText = ""
+    @State private var selectedSavedView = JiraSavedView.all
     @State private var selectedStatuses: Set<String> = []
     @State private var selectedPriorities: Set<String> = []
     @State private var selectedTypes: Set<String> = []
+    @State private var commentDrafts: [JiraIssue.ID: String] = [:]
+    @State private var commentMentions: [JiraIssue.ID: [JiraUser]] = [:]
+    @State private var commentDates: [JiraIssue.ID: [JiraCommentDateToken]] = [:]
     @State private var isFindingCurrentUser = false
     @State private var isScopePresented = false
 
@@ -26,7 +31,7 @@ struct JiraView: View {
         .onChange(of: jiraService.requestedIssueID) { _, issueID in
             guard let issueID else { return }
             selectedIssueID = issueID
-            mode = .issues
+            mode = .workbench
         }
         .onChange(of: jiraService.notificationCenterRequest) { _, _ in
             mode = .notifications
@@ -96,7 +101,9 @@ struct JiraView: View {
 
     private var workspaceTabs: some View {
         HStack(spacing: 2) {
-            workspaceTab(.issues, icon: "rectangle.stack")
+            workspaceTab(.workbench, icon: "hammer")
+            workspaceTab(.standup, icon: "person.3.fill")
+            workspaceTab(.pulse, icon: "chart.bar.xaxis")
             workspaceTab(.notifications, icon: "bell")
         }
         .padding(3)
@@ -150,6 +157,20 @@ struct JiraView: View {
                 unreadIDs: jiraService.unreadNotificationIDs,
                 onOpen: openNotification,
                 onMarkAllRead: jiraService.markAllNotificationsRead
+            )
+        } else if mode == .standup, !jiraService.issues.isEmpty {
+            JiraStandupView(
+                issues: jiraService.issues,
+                onOpenIssue: openIssue
+            )
+            .environmentObject(jiraService)
+        } else if mode == .pulse, !jiraService.issues.isEmpty {
+            JiraProjectPulseView(
+                issues: jiraService.issues,
+                notifications: jiraService.notifications,
+                projectKey: projectKey,
+                isFilteredToAssignee: !assigneeAccountID.isEmpty,
+                onOpenIssue: openIssue
             )
         } else if jiraService.issues.isEmpty {
             issueWorkspace
@@ -260,9 +281,22 @@ struct JiraView: View {
             Divider().opacity(0.65)
 
             if let selectedIssue {
-                JiraIssueDetailView(issue: selectedIssue)
+                JiraIssueDetailView(
+                    issue: selectedIssue,
+                    commentText: Binding(
+                        get: { commentDrafts[selectedIssue.id] ?? "" },
+                        set: { commentDrafts[selectedIssue.id] = $0 }
+                    ),
+                    mentions: Binding(
+                        get: { commentMentions[selectedIssue.id] ?? [] },
+                        set: { commentMentions[selectedIssue.id] = $0 }
+                    ),
+                    dates: Binding(
+                        get: { commentDates[selectedIssue.id] ?? [] },
+                        set: { commentDates[selectedIssue.id] = $0 }
+                    )
+                )
                     .environmentObject(jiraService)
-                    .id(selectedIssue.id)
             } else {
                 ContentUnavailableView(
                     "Select a ticket",
@@ -277,6 +311,7 @@ struct JiraView: View {
     private var ticketSidebar: some View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
+                savedViewBar
                 searchField
                 statusFilterBar
                 filterRow
@@ -365,6 +400,36 @@ struct JiraView: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.55), lineWidth: 0.5)
         )
+    }
+
+    private var savedViewBar: some View {
+        HStack(spacing: 5) {
+            ForEach(JiraSavedView.allCases) { savedView in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.12)) { selectedSavedView = savedView }
+                } label: {
+                    Label(savedView.title, systemImage: savedView.systemImage)
+                        .font(.system(size: 9, weight: .semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(
+                            selectedSavedView == savedView
+                                ? Color.white
+                                : Color(NSColor.secondaryLabelColor)
+                        )
+                        .padding(.horizontal, 8)
+                        .frame(height: 23)
+                        .background(
+                            selectedSavedView == savedView
+                                ? Color.accentColor
+                                : Color(NSColor.textBackgroundColor),
+                            in: Capsule()
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(savedView.help)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var statusFilterBar: some View {
@@ -471,7 +536,8 @@ struct JiraView: View {
             }
             let matchesPriority = selectedPriorities.isEmpty || selectedPriorities.contains(issue.fields.priority?.name ?? "No priority")
             let matchesType = selectedTypes.isEmpty || selectedTypes.contains(issue.fields.issueType.name)
-            return matchesQuery && matchesStatus && matchesPriority && matchesType
+            let matchesSavedView = selectedSavedView.matches(issue, currentUser: jiraService.currentUser)
+            return matchesQuery && matchesStatus && matchesPriority && matchesType && matchesSavedView
         }
     }
 
@@ -502,7 +568,7 @@ struct JiraView: View {
     }
 
     private var mode: JiraWorkspaceMode {
-        get { JiraWorkspaceMode(rawValue: modeRawValue) ?? .issues }
+        get { JiraWorkspaceMode(rawValue: modeRawValue) ?? .workbench }
         nonmutating set { modeRawValue = newValue.rawValue }
     }
 
@@ -543,18 +609,85 @@ struct JiraView: View {
     private func openNotification(_ notification: JiraNotification) {
         jiraService.markNotificationRead(notification)
         selectedIssueID = notification.issueID
-        mode = .issues
+        mode = .workbench
+    }
+
+    private func openIssue(_ issue: JiraIssue) {
+        selectedIssueID = issue.id
+        selectedSavedView = .all
+        resetFilters()
+        mode = .workbench
     }
 }
 
 private enum JiraWorkspaceMode: String {
-    case issues
+    case workbench = "issues"
+    case standup
+    case pulse
     case notifications
 
     var title: String {
         switch self {
-        case .issues: "Tickets"
-        case .notifications: "Notifications"
+        case .workbench: "Workbench"
+        case .standup: "Standup"
+        case .pulse: "Project Pulse"
+        case .notifications: "Inbox"
+        }
+    }
+}
+
+private enum JiraSavedView: String, CaseIterable, Identifiable {
+    case all
+    case myQueue
+    case needsReview
+    case inQA
+    case readyToShip
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .myQueue: "My Queue"
+        case .needsReview: "Review"
+        case .inQA: "QA"
+        case .readyToShip: "Ship"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: "square.grid.2x2"
+        case .myQueue: "person.crop.circle"
+        case .needsReview: "eye"
+        case .inQA: "checkmark.seal"
+        case .readyToShip: "shippingbox"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .all: "All tickets in the current sprint scope"
+        case .myQueue: "Tickets assigned to you"
+        case .needsReview: "Tickets waiting for code review"
+        case .inQA: "Tickets currently in QA"
+        case .readyToShip: "Tickets ready for release"
+        }
+    }
+
+    func matches(_ issue: JiraIssue, currentUser: JiraUser?) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .myQueue:
+            issue.fields.assignee?.accountId == currentUser?.accountId
+        case .needsReview:
+            JiraWorkflowStatus.codeReview.matches(issue.fields.status.name)
+        case .inQA:
+            JiraWorkflowStatus.inQA.matches(issue.fields.status.name)
+        case .readyToShip:
+            JiraWorkflowStatus.readyForRelease.matches(issue.fields.status.name)
+                || JiraWorkflowStatus.doneReleaseReady.matches(issue.fields.status.name)
         }
     }
 }
@@ -691,28 +824,71 @@ private struct JiraStatusBadge: View {
 private struct JiraIssueDetailView: View {
     @EnvironmentObject private var jiraService: JiraService
     let issue: JiraIssue
-    @State private var commentText = ""
+    @Binding var commentText: String
+    @Binding var mentions: [JiraUser]
+    @Binding var dates: [JiraCommentDateToken]
     @State private var isPosting = false
     @State private var feedback: CommentFeedback?
+    @State private var transitionFeedback: CommentFeedback?
+    @State private var mentionQuery: String?
+    @State private var mentionSuggestions: [JiraUser] = []
+    @State private var isSearchingMentions = false
+    @State private var isDatePickerPresented = false
+    @State private var selectedDate = Date()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                issueHeader
-                metadataGrid
-                Divider().opacity(0.55)
-                conversationSection
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    issueHeader
+                    metadataGrid
+                    descriptionSection
+                    Divider().opacity(0.55)
+                    conversationSection
+                }
+                .padding(.horizontal, 30)
+                .padding(.vertical, 26)
+                .frame(maxWidth: 820, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            Divider().opacity(0.65)
+
+            VStack(spacing: 12) {
+                workflowStrip
+                Divider().opacity(0.45)
                 commentComposer
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical, 26)
-            .frame(maxWidth: 820, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.bar)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .task(id: issue.id) {
-            await jiraService.loadComments(for: issue)
+            async let comments: Void = jiraService.loadComments(for: issue)
+            async let transitions: Void = jiraService.loadTransitions(for: issue)
+            _ = await (comments, transitions)
+        }
+        .task(id: mentionQuery) {
+            guard let mentionQuery else {
+                mentionSuggestions = []
+                isSearchingMentions = false
+                return
+            }
+
+            isSearchingMentions = true
+            do {
+                try await Task.sleep(for: .milliseconds(220))
+                let users = try await jiraService.searchMentionUsers(matching: mentionQuery, for: issue)
+                guard !Task.isCancelled else { return }
+                mentionSuggestions = users
+            } catch is CancellationError {
+                return
+            } catch {
+                mentionSuggestions = []
+            }
+            isSearchingMentions = false
         }
     }
 
@@ -774,6 +950,35 @@ private struct JiraIssueDetailView: View {
         }
     }
 
+    private var descriptionSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("Description", systemImage: "text.alignleft")
+                .font(.system(size: 13, weight: .bold))
+
+            let description = issue.fields.description?.plainText
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Text(description.isEmpty ? "No description provided." : description)
+                .font(.system(size: 12))
+                .foregroundStyle(
+                    description.isEmpty
+                        ? Color(NSColor.tertiaryLabelColor)
+                        : Color(NSColor.labelColor)
+                )
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(
+                    Color(NSColor.controlBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+                )
+        }
+    }
+
     private var conversationSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -832,34 +1037,145 @@ private struct JiraIssueDetailView: View {
         }
     }
 
+    private var workflowStrip: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Label("Move ticket", systemImage: "arrow.triangle.branch")
+                    .font(.system(size: 11, weight: .bold))
+                Text(issue.fields.status.name)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(jiraStatusColor(issue.statusGroup))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(jiraStatusColor(issue.statusGroup).opacity(0.12), in: Capsule())
+                if jiraService.loadingTransitionIssueIDs.contains(issue.id) {
+                    ProgressView().controlSize(.small)
+                }
+                if let transitionFeedback {
+                    Label(
+                        transitionFeedback.message,
+                        systemImage: transitionFeedback.isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill"
+                    )
+                    .font(.system(size: 9))
+                    .foregroundStyle(transitionFeedback.isError ? Color.red : Color.green)
+                    .lineLimit(1)
+                }
+                Spacer()
+                Menu {
+                    ForEach(availableTransitions) { transition in
+                        Button(transition.to.name) { move(using: transition) }
+                    }
+                } label: {
+                    Label("Change Status", systemImage: "chevron.up.chevron.down")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(availableTransitions.isEmpty || isTransitioning)
+            }
+
+            HStack(spacing: 5) {
+                ForEach(JiraWorkflowStatus.allCases) { status in
+                    let transition = transition(to: status)
+                    let isCurrent = status.matches(issue.fields.status.name)
+                    Button {
+                        if let transition { move(using: transition) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
+                            Text(status.rawValue)
+                                .lineLimit(1)
+                        }
+                        .font(.system(size: 9, weight: isCurrent ? .bold : .semibold))
+                        .foregroundStyle(
+                            isCurrent
+                                ? Color.white
+                                : jiraWorkflowStatusColor(status)
+                        )
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .background(
+                            isCurrent
+                                ? jiraWorkflowStatusColor(status)
+                                : jiraWorkflowStatusColor(status).opacity(transition == nil ? 0.05 : 0.11),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(jiraWorkflowStatusColor(status).opacity(0.24), lineWidth: 0.5)
+                        )
+                        .opacity(!isCurrent && transition == nil ? 0.48 : 1)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCurrent || transition == nil || isTransitioning)
+                    .help(isCurrent ? "Current status" : (transition == nil ? "Not available from the current status" : "Move to \(status.rawValue)"))
+                }
+            }
+        }
+    }
+
     private var commentComposer: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Add a comment")
-                .font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Comment", systemImage: "bubble.left")
+                    .font(.system(size: 11, weight: .bold))
+                Spacer()
+                Text("Draft and rich fields stay with this ticket")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+            }
+
+            if mentionQuery != nil {
+                mentionSuggestionsPanel
+            }
 
             ZStack(alignment: .topLeading) {
                 if commentText.isEmpty {
-                    Text("Share an update, ask a question, or leave context…")
-                        .font(.system(size: 12))
+                    Text("Share progress, test notes, or a blocker…")
+                        .font(.system(size: 11))
                         .foregroundStyle(Color(NSColor.placeholderTextColor))
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 9)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $commentText)
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .scrollContentBackground(.hidden)
-                    .padding(7)
-                    .frame(minHeight: 100, maxHeight: 170)
+                    .padding(5)
+                    .frame(minHeight: 62, maxHeight: 96)
             }
-            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .onChange(of: commentText) { _, newValue in
+                handleComposerTextChange(newValue)
+            }
+            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color(NSColor.separatorColor).opacity(0.65), lineWidth: 0.5)
             )
 
             HStack {
-                Text("⌘↩ to post")
+                Button {
+                    insertMentionCommand()
+                } label: {
+                    Label("Mention", systemImage: "at")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Mention a Jira user")
+
+                Button {
+                    selectedDate = Date()
+                    isDatePickerPresented = true
+                } label: {
+                    Label("Date", systemImage: "calendar")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Insert a Jira date")
+                .popover(isPresented: $isDatePickerPresented, arrowEdge: .bottom) {
+                    datePickerPopover
+                }
+
+                Text("@name · /date · ⌘↩")
                     .font(.system(size: 10))
                     .foregroundStyle(Color(NSColor.tertiaryLabelColor))
                 if let feedback {
@@ -885,12 +1201,94 @@ private struct JiraIssueDetailView: View {
                 .keyboardShortcut(.return, modifiers: [.command])
             }
         }
-        .padding(16)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var mentionSuggestionsPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Mention someone", systemImage: "at")
+                    .font(.system(size: 10, weight: .semibold))
+                Spacer()
+                if isSearchingMentions {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+
+            if !isSearchingMentions && mentionSuggestions.isEmpty {
+                Text("No assignable Jira users found")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
+            } else {
+                ForEach(mentionSuggestions.prefix(6)) { user in
+                    Button {
+                        selectMention(user)
+                    } label: {
+                        HStack(spacing: 9) {
+                            Text(initials(for: user.displayName))
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(Color.accentColor.gradient, in: Circle())
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(user.displayName)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color(NSColor.labelColor))
+                                if let emailAddress = user.emailAddress, !emailAddress.isEmpty {
+                                    Text(emailAddress)
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "return")
+                                .font(.system(size: 9))
+                                .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.35), lineWidth: 0.75)
         )
+    }
+
+    private var datePickerPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Insert Jira date")
+                .font(.system(size: 13, weight: .bold))
+            DatePicker(
+                "Date",
+                selection: $selectedDate,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+
+            HStack {
+                Button("Cancel") {
+                    isDatePickerPresented = false
+                }
+                Spacer()
+                Button("Insert Date") {
+                    insertSelectedDate()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 270)
     }
 
     private var comments: [JiraComment] {
@@ -899,16 +1297,113 @@ private struct JiraIssueDetailView: View {
 
     private func postComment() {
         let text = commentText
+        let commentMentions = mentions
+        let commentDates = dates
         isPosting = true
         feedback = nil
         Task {
             defer { isPosting = false }
             do {
-                try await jiraService.addComment(text, to: issue)
+                try await jiraService.addComment(
+                    text,
+                    to: issue,
+                    mentions: commentMentions,
+                    dates: commentDates
+                )
                 commentText = ""
+                mentions = []
+                dates = []
+                mentionQuery = nil
                 feedback = CommentFeedback(message: "Posted", isError: false)
             } catch {
                 feedback = CommentFeedback(message: error.localizedDescription, isError: true)
+            }
+        }
+    }
+
+    private func handleComposerTextChange(_ text: String) {
+        if text.hasSuffix("/date") {
+            commentText.removeLast("/date".count)
+            mentionQuery = nil
+            mentionSuggestions = []
+            selectedDate = Date()
+            isDatePickerPresented = true
+            return
+        }
+        mentionQuery = activeMentionQuery(in: text)
+    }
+
+    private func activeMentionQuery(in text: String) -> String? {
+        guard let atIndex = text.lastIndex(of: "@") else { return nil }
+        if atIndex > text.startIndex {
+            let previousIndex = text.index(before: atIndex)
+            guard text[previousIndex].isWhitespace || text[previousIndex].isPunctuation else { return nil }
+        }
+        let queryStart = text.index(after: atIndex)
+        let query = text[queryStart...]
+        guard !query.contains(where: { $0.isWhitespace || $0 == "@" }) else { return nil }
+        return String(query)
+    }
+
+    private func insertMentionCommand() {
+        if !commentText.isEmpty, commentText.last?.isWhitespace != true {
+            commentText.append(" ")
+        }
+        commentText.append("@")
+        mentionQuery = ""
+    }
+
+    private func selectMention(_ user: JiraUser) {
+        guard let atIndex = commentText.lastIndex(of: "@") else { return }
+        commentText.replaceSubrange(atIndex..<commentText.endIndex, with: "@\(user.displayName) ")
+        if !mentions.contains(where: { $0.accountId == user.accountId }) {
+            mentions.append(user)
+        }
+        mentionQuery = nil
+        mentionSuggestions = []
+    }
+
+    private func insertSelectedDate() {
+        let token = JiraCommentDateToken(date: selectedDate)
+        if !commentText.isEmpty, commentText.last?.isWhitespace != true {
+            commentText.append(" ")
+        }
+        commentText.append("\(token.marker) ")
+        dates.append(token)
+        isDatePickerPresented = false
+    }
+
+    private func initials(for name: String) -> String {
+        String(
+            name.split(separator: " ")
+                .prefix(2)
+                .compactMap(\.first)
+        )
+        .uppercased()
+    }
+
+    private var availableTransitions: [JiraTransition] {
+        jiraService.transitions(for: issue)
+    }
+
+    private var isTransitioning: Bool {
+        jiraService.transitioningIssueIDs.contains(issue.id)
+    }
+
+    private func transition(to status: JiraWorkflowStatus) -> JiraTransition? {
+        availableTransitions.first {
+            status.matches($0.to.name) || status.matches($0.name)
+        }
+    }
+
+    private func move(using transition: JiraTransition) {
+        transitionFeedback = nil
+        Task {
+            do {
+                try await jiraService.transition(issue, using: transition)
+                transitionFeedback = CommentFeedback(message: "Moved to \(transition.to.name)", isError: false)
+            } catch {
+                transitionFeedback = CommentFeedback(message: error.localizedDescription, isError: true)
             }
         }
     }
@@ -1088,6 +1583,437 @@ private struct JiraCommentRow: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - Project pulse
+
+private struct JiraProjectPulseView: View {
+    let issues: [JiraIssue]
+    let notifications: [JiraNotification]
+    let projectKey: String
+    let isFilteredToAssignee: Bool
+    let onOpenIssue: (JiraIssue) -> Void
+    @State private var exportFeedback: JiraPulseExportFeedback?
+
+    private var analytics: JiraSprintAnalytics {
+        JiraSprintAnalytics(issues: issues, notifications: notifications)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                pulseHeader
+                metricGrid
+
+                if isFilteredToAssignee {
+                    Label(
+                        "Project Pulse reflects your current assignee scope. Choose Everyone to review the full team.",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.orange)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    workflowDistribution
+                    attentionSummary
+                }
+
+                teamFlow
+                attentionTickets
+            }
+            .padding(28)
+            .frame(maxWidth: 1080)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var pulseHeader: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Project Pulse")
+                    .font(.system(size: 22, weight: .bold))
+                Text("A current-sprint view of flow, workload, and work that needs attention.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+            }
+            Spacer()
+            Menu {
+                Button {
+                    export(.pdf)
+                } label: {
+                    Label("PDF Report", systemImage: "doc.richtext")
+                }
+                Button {
+                    export(.csv)
+                } label: {
+                    Label("CSV Data", systemImage: "tablecells")
+                }
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Export the current sprint report")
+
+            if let exportFeedback {
+                Label(exportFeedback.message, systemImage: exportFeedback.systemImage)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(exportFeedback.isError ? Color.red : Color.green)
+                    .lineLimit(1)
+            }
+
+            Text("\(analytics.total) sprint tickets")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color(NSColor.controlBackgroundColor), in: Capsule())
+        }
+    }
+
+    private var metricGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4),
+            spacing: 10
+        ) {
+            JiraPulseMetricCard(
+                title: "Sprint completion",
+                value: "\(Int((analytics.completionRate * 100).rounded()))%",
+                detail: "\(analytics.completed) of \(analytics.total) complete",
+                icon: "checkmark.circle.fill",
+                tint: .green
+            )
+            JiraPulseMetricCard(
+                title: "Active WIP",
+                value: "\(analytics.active)",
+                detail: "\(analytics.inReview) in code review",
+                icon: "bolt.fill",
+                tint: .blue
+            )
+            JiraPulseMetricCard(
+                title: "Release queue",
+                value: "\(analytics.readyForRelease)",
+                detail: "Counted complete · \(analytics.inQA) in QA",
+                icon: "shippingbox.fill",
+                tint: .teal
+            )
+            JiraPulseMetricCard(
+                title: "Needs attention",
+                value: "\(analytics.attentionIssues.count)",
+                detail: "\(analytics.aging) aging · \(analytics.highPriority) high",
+                icon: "exclamationmark.triangle.fill",
+                tint: analytics.attentionIssues.isEmpty ? .green : .orange
+            )
+        }
+    }
+
+    private var workflowDistribution: some View {
+        JiraPulsePanel(title: "Workflow distribution", subtitle: "Where active-sprint work sits right now") {
+            VStack(spacing: 10) {
+                ForEach(analytics.statusCounts) { item in
+                    HStack(spacing: 9) {
+                        Circle()
+                            .fill(jiraWorkflowStatusColor(item.status))
+                            .frame(width: 7, height: 7)
+                        Text(item.status.rawValue)
+                            .font(.system(size: 10, weight: .medium))
+                            .frame(width: 112, alignment: .leading)
+                        GeometryReader { proxy in
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(Color(NSColor.controlBackgroundColor))
+                                .overlay(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(jiraWorkflowStatusColor(item.status).opacity(0.72))
+                                        .frame(
+                                            width: analytics.total == 0
+                                                ? 0
+                                                : proxy.size.width * CGFloat(item.count) / CGFloat(analytics.total)
+                                        )
+                                }
+                        }
+                        .frame(height: 7)
+                        Text("\(item.count)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .frame(width: 22, alignment: .trailing)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var attentionSummary: some View {
+        JiraPulsePanel(title: "Flow signals", subtitle: "Prompts for the next team conversation") {
+            VStack(spacing: 0) {
+                pulseSignal("Aging over 3 days", value: analytics.aging, icon: "clock.badge.exclamationmark", tint: .orange)
+                Divider().opacity(0.45)
+                pulseSignal("High priority", value: analytics.highPriority, icon: "flag.fill", tint: .red)
+                Divider().opacity(0.45)
+                pulseSignal("Unassigned", value: analytics.unassigned, icon: "person.crop.circle.badge.questionmark", tint: .purple)
+                Divider().opacity(0.45)
+                pulseSignal("Completed in 7 days", value: analytics.completedRecently, icon: "calendar.badge.checkmark", tint: .green)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func pulseSignal(_ title: String, value: Int, icon: String, tint: Color) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 22)
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+            Spacer()
+            Text("\(value)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+        }
+        .padding(.vertical, 9)
+    }
+
+    private var teamFlow: some View {
+        JiraPulsePanel(
+            title: "Team flow",
+            subtitle: "Work distribution by assignee—not an employee score"
+        ) {
+            VStack(spacing: 0) {
+                JiraTeamFlowHeader()
+                Divider().opacity(0.55)
+                ForEach(analytics.team) { member in
+                    JiraTeamFlowRow(member: member)
+                    if member.id != analytics.team.last?.id {
+                        Divider().opacity(0.32)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var attentionTickets: some View {
+        if !analytics.attentionIssues.isEmpty {
+            JiraPulsePanel(
+                title: "Tickets needing attention",
+                subtitle: "High-priority, unassigned, or unchanged for more than three days"
+            ) {
+                LazyVStack(spacing: 6) {
+                    ForEach(analytics.attentionIssues.prefix(8)) { issue in
+                        Button {
+                            onOpenIssue(issue)
+                        } label: {
+                            HStack(spacing: 10) {
+                                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                    .fill(jiraPriorityColor(issue.fields.priority?.name))
+                                    .frame(width: 3, height: 28)
+                                Text(issue.key)
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 72, alignment: .leading)
+                                Text(issue.fields.summary)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Color(NSColor.labelColor))
+                                    .lineLimit(1)
+                                Spacer()
+                                JiraStatusBadge(issue: issue)
+                                if issue.fields.assignee == nil {
+                                    Text("Unassigned")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(Color.purple)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+                            }
+                            .padding(.horizontal, 9)
+                            .frame(height: 38)
+                            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func export(_ format: JiraPulseExportFormat) {
+        exportFeedback = nil
+        let panel = NSSavePanel()
+        panel.title = "Export Project Pulse"
+        panel.prompt = "Export"
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.allowsOtherFileTypes = false
+        panel.allowedContentTypes = [
+            format == .pdf ? .pdf : .commaSeparatedText
+        ]
+        panel.nameFieldStringValue = JiraPulseExporter.suggestedFilename(
+            projectKey: projectKey,
+            format: format
+        )
+
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            return
+        }
+
+        do {
+            let data = try JiraPulseExporter.data(
+                for: format,
+                issues: issues,
+                notifications: notifications,
+                projectKey: projectKey,
+                isFilteredToAssignee: isFilteredToAssignee
+            )
+            try data.write(to: destination, options: .atomic)
+            exportFeedback = JiraPulseExportFeedback(
+                message: "\(format.displayName) exported",
+                isError: false
+            )
+        } catch {
+            exportFeedback = JiraPulseExportFeedback(
+                message: error.localizedDescription,
+                isError: true
+            )
+        }
+    }
+}
+
+private struct JiraPulseExportFeedback {
+    let message: String
+    let isError: Bool
+
+    var systemImage: String {
+        isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+    }
+}
+
+private struct JiraPulseMetricCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                Spacer()
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+            }
+            Text(value)
+                .font(.system(size: 25, weight: .bold, design: .rounded))
+            Text(detail)
+                .font(.system(size: 9))
+                .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+                .lineLimit(1)
+        }
+        .padding(14)
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)
+        )
+    }
+}
+
+private struct JiraPulsePanel<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let content: Content
+
+    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                Text(subtitle)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+            }
+            content
+        }
+        .padding(15)
+        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)
+        )
+    }
+}
+
+private struct JiraTeamFlowHeader: View {
+    var body: some View {
+        HStack {
+            Text("ASSIGNEE").frame(maxWidth: .infinity, alignment: .leading)
+            Text("TOTAL").frame(width: 50)
+            Text("ACTIVE").frame(width: 50)
+            Text("REVIEW").frame(width: 50)
+            Text("QA").frame(width: 42)
+            Text("DONE").frame(width: 50)
+            Text("AT RISK").frame(width: 58)
+        }
+        .font(.system(size: 8, weight: .bold))
+        .foregroundStyle(Color(NSColor.tertiaryLabelColor))
+        .padding(.vertical, 6)
+    }
+}
+
+private struct JiraTeamFlowRow: View {
+    let member: JiraTeamFlowMember
+
+    var body: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Text(initials)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(Color.accentColor.gradient, in: Circle())
+                Text(member.name)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            value(member.assigned, width: 50)
+            value(member.active, width: 50)
+            value(member.inReview, width: 50)
+            value(member.inQA, width: 42)
+            value(member.completed, width: 50)
+            value(member.atRisk, width: 58, tint: member.atRisk > 0 ? .orange : .secondary)
+        }
+        .padding(.vertical, 7)
+    }
+
+    private var initials: String {
+        member.name.split(separator: " ")
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+    }
+
+    private func value(_ value: Int, width: CGFloat, tint: Color = .secondary) -> some View {
+        Text("\(value)")
+            .font(.system(size: 10, weight: value > 0 ? .bold : .regular, design: .monospaced))
+            .foregroundStyle(value > 0 ? tint : Color(NSColor.tertiaryLabelColor))
+            .frame(width: width)
     }
 }
 

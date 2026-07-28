@@ -22,9 +22,33 @@ struct TidyApp: App {
         }
         .defaultSize(width: 1220, height: 760)
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandMenu("Navigate") {
+                ForEach(DashboardSection.allCases) { section in
+                    Button(section.fullTitle) {
+                        appState.selectedDashboardSection = section
+                    }
+                    .keyboardShortcut(
+                        KeyEquivalent(section.shortcutDigit),
+                        modifiers: section.shortcutModifiers
+                    )
+                }
+
+                Divider()
+
+                Button(appState.isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar") {
+                    appState.isSidebarCollapsed.toggle()
+                }
+                .keyboardShortcut("/", modifiers: [.command])
+            }
+        }
 
         MenuBarExtra("Tidy", systemImage: "sparkles") {
-            TidyMenuBarView(appState: appState, jiraService: appState.jiraService)
+            TidyMenuBarView(
+                appState: appState,
+                jiraService: appState.jiraService,
+                notificationService: appState.unifiedNotificationService
+            )
         }
         .menuBarExtraStyle(.menu)
 
@@ -49,6 +73,7 @@ struct TidyApp: App {
 private struct TidyMenuBarView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var jiraService: JiraService
+    @ObservedObject var notificationService: UnifiedNotificationService
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -68,6 +93,19 @@ private struct TidyMenuBarView: View {
             appState.tidyClipboardText()
         } label: {
             Label("Tidy Clipboard Text", systemImage: "textformat")
+        }
+
+        Button {
+            openWindow(id: "main")
+            appState.openUnifiedNotifications()
+        } label: {
+            let count = notificationService.sourceErrors.isEmpty
+                ? notificationService.digests.count
+                : 0
+            Label(
+                count == 0 ? "Unified Notifications" : "Unified Notifications (\(count) sources)",
+                systemImage: count == 0 ? "bell" : "bell.fill"
+            )
         }
 
         Menu {

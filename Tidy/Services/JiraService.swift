@@ -23,6 +23,11 @@ enum JiraServiceError: LocalizedError, Equatable {
     }
 }
 
+struct JiraStandupPostResult {
+    let postedIssueIDs: Set<String>
+    let errorsByIssueKey: [String: String]
+}
+
 struct JiraAPIClient {
     let configuration: JiraConfiguration
     var session: URLSession = .shared
@@ -48,7 +53,10 @@ struct JiraAPIClient {
         repeat {
             let body = JiraSearchRequest(
                 jql: jql,
-                fields: ["summary", "status", "priority", "assignee", "issuetype", "updated"],
+                fields: [
+                    "summary", "status", "priority", "assignee", "issuetype",
+                    "description", "created", "updated", "resolutiondate"
+                ],
                 maxResults: 100,
                 nextPageToken: nextPageToken
             )
@@ -101,14 +109,45 @@ struct JiraAPIClient {
         return comments
     }
 
-    func addComment(_ text: String, to issueKey: String) async throws {
+    func assignableUsers(for issueKey: String, matching query: String) async throws -> [JiraUser] {
+        let encodedKey = issueKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? issueKey
+        let request = try makeRequest(
+            path: "/rest/api/3/user/assignable/search",
+            queryItems: [
+                URLQueryItem(name: "issueKey", value: encodedKey),
+                URLQueryItem(name: "query", value: query),
+                URLQueryItem(name: "startAt", value: "0"),
+                URLQueryItem(name: "maxResults", value: "8")
+            ]
+        )
+        let data = try await perform(request, expectedStatus: 200)
+        do {
+            return try JSONDecoder().decode([JiraUser].self, from: data)
+        } catch {
+            throw JiraServiceError.invalidResponse
+        }
+    }
+
+    func addComment(
+        _ text: String,
+        to issueKey: String,
+        mentions: [JiraUser] = [],
+        dates: [JiraCommentDateToken] = []
+    ) async throws -> JiraComment {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { throw JiraServiceError.invalidResponse }
 
         let encodedKey = issueKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? issueKey
         var request = try makeRequest(path: "/rest/api/3/issue/\(encodedKey)/comment", method: "POST")
-        request.httpBody = try JSONEncoder().encode(JiraCommentRequest(text: trimmed))
-        _ = try await perform(request, expectedStatus: 201)
+        request.httpBody = try JSONEncoder().encode(
+            JiraCommentRequest(text: trimmed, mentions: mentions, dates: dates)
+        )
+        let data = try await perform(request, expectedStatus: 201)
+        do {
+            return try JSONDecoder().decode(JiraComment.self, from: data)
+        } catch {
+            throw JiraServiceError.invalidResponse
+        }
     }
 
     func updateComment(_ text: String, commentID: String, issueKey: String) async throws {
@@ -123,6 +162,82 @@ struct JiraAPIClient {
         )
         request.httpBody = try JSONEncoder().encode(JiraCommentRequest(text: trimmed))
         _ = try await perform(request, expectedStatus: 200)
+    }
+
+    func transitions(for issueKey: String) async throws -> [JiraTransition] {
+        let encodedKey = issueKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? issueKey
+        let request = try makeRequest(path: "/rest/api/3/issue/\(encodedKey)/transitions")
+        let data = try await perform(request, expectedStatus: 200)
+        do {
+            return try JSONDecoder().decode(JiraTransitionsResponse.self, from: data).transitions
+        } catch {
+            throw JiraServiceError.invalidResponse
+        }
+    }
+
+    func recentComments(for issueKey: String, maxResults: Int = 50) async throws -> [JiraComment] {
+        let encodedKey = issueKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? issueKey
+        let request = try makeRequest(
+            path: "/rest/api/3/issue/\(encodedKey)/comment",
+            queryItems: [
+                URLQueryItem(name: "startAt", value: "0"),
+                URLQueryItem(name: "maxResults", value: String(maxResults)),
+                URLQueryItem(name: "orderBy", value: "-created")
+            ]
+        )
+        let data = try await perform(request, expectedStatus: 200)
+        do {
+            return try JSONDecoder().decode(JiraCommentsResponse.self, from: data).comments
+        } catch {
+            throw JiraServiceError.invalidResponse
+        }
+    }
+
+    func standupUpdates(
+        for issues: [JiraIssue],
+        on date: Date = Date(),
+        calendar: Calendar = .current,
+        batchSize: Int = 8
+    ) async -> [JiraStandupUpdate] {
+        var updates: [JiraStandupUpdate] = []
+        let candidates = issues
+            .filter { issue in
+                guard let updatedDate = issue.updatedDate else { return false }
+                return calendar.isDate(updatedDate, inSameDayAs: date)
+            }
+            .sorted { ($0.updatedDate ?? .distantPast) > ($1.updatedDate ?? .distantPast) }
+
+        for start in stride(from: 0, to: candidates.count, by: batchSize) {
+            let end = min(start + batchSize, candidates.count)
+            let batch = Array(candidates[start..<end])
+            let batchUpdates = await withTaskGroup(of: [JiraStandupUpdate].self) { group in
+                for issue in batch {
+                    group.addTask {
+                        let comments = (try? await recentComments(for: issue.key)) ?? []
+                        return comments.compactMap { comment in
+                            JiraStandupUpdate(comment: comment, issue: issue)
+                        }
+                        .filter { $0.isOnSameDay(as: date) }
+                    }
+                }
+
+                var found: [JiraStandupUpdate] = []
+                for await issueUpdates in group {
+                    found.append(contentsOf: issueUpdates)
+                }
+                return found
+            }
+            updates.append(contentsOf: batchUpdates)
+        }
+
+        return updates.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func transition(_ issueKey: String, using transitionID: String) async throws {
+        let encodedKey = issueKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? issueKey
+        var request = try makeRequest(path: "/rest/api/3/issue/\(encodedKey)/transitions", method: "POST")
+        request.httpBody = try Self.transitionBody(for: transitionID)
+        _ = try await perform(request, expectedStatus: 204)
     }
 
     func recentChanges(for issues: [JiraIssue]) async throws -> [JiraNotification] {
@@ -157,7 +272,10 @@ struct JiraAPIClient {
                         status: issue.fields.status.name,
                         actor: history.author?.displayName,
                         createdAt: history.created.date,
-                        isFallback: false
+                        isFallback: false,
+                        field: item.field,
+                        fromValue: item.fromString,
+                        toValue: item.toString
                     )
                 }
             }
@@ -189,6 +307,20 @@ struct JiraAPIClient {
         try JSONEncoder().encode(JiraCommentRequest(text: text))
     }
 
+    static func commentBody(
+        for text: String,
+        mentions: [JiraUser],
+        dates: [JiraCommentDateToken]
+    ) throws -> Data {
+        try JSONEncoder().encode(
+            JiraCommentRequest(text: text, mentions: mentions, dates: dates)
+        )
+    }
+
+    static func transitionBody(for transitionID: String) throws -> Data {
+        try JSONEncoder().encode(JiraTransitionRequest(transition: .init(id: transitionID)))
+    }
+
     static func fallbackNotifications(for issues: [JiraIssue]) -> [JiraNotification] {
         issues.compactMap { issue in
             guard let updated = issue.updatedDate else { return nil }
@@ -203,7 +335,10 @@ struct JiraAPIClient {
                 status: issue.fields.status.name,
                 actor: nil,
                 createdAt: updated,
-                isFallback: true
+                isFallback: true,
+                field: nil,
+                fromValue: nil,
+                toValue: nil
             )
         }
         .sorted { $0.createdAt > $1.createdAt }
@@ -266,7 +401,10 @@ struct JiraAPIClient {
     }
 
     private func perform(_ request: URLRequest, expectedStatus: Int) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await SecureHTTP.data(
+            for: request,
+            session: session
+        )
         guard let http = response as? HTTPURLResponse else { throw JiraServiceError.invalidResponse }
         guard http.statusCode == expectedStatus else {
             throw JiraServiceError.httpError(status: http.statusCode, message: Self.errorMessage(from: data))
@@ -291,6 +429,14 @@ final class JiraService: ObservableObject {
     @Published private(set) var commentsByIssueID: [String: [JiraComment]] = [:]
     @Published private(set) var loadingCommentIssueIDs: Set<String> = []
     @Published private(set) var commentErrorsByIssueID: [String: String] = [:]
+    @Published private(set) var transitionsByIssueID: [String: [JiraTransition]] = [:]
+    @Published private(set) var loadingTransitionIssueIDs: Set<String> = []
+    @Published private(set) var transitioningIssueIDs: Set<String> = []
+    @Published private(set) var transitionErrorsByIssueID: [String: String] = [:]
+    @Published private(set) var standupUpdates: [JiraStandupUpdate] = []
+    @Published private(set) var isLoadingStandup = false
+    @Published private(set) var postingStandupIssueIDs: Set<String> = []
+    @Published private(set) var standupErrorMessage: String?
     @Published private(set) var currentUser: JiraUser?
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
@@ -352,10 +498,26 @@ final class JiraService: ObservableObject {
         return user
     }
 
-    func addComment(_ text: String, to issue: JiraIssue) async throws {
+    func addComment(
+        _ text: String,
+        to issue: JiraIssue,
+        mentions: [JiraUser] = [],
+        dates: [JiraCommentDateToken] = []
+    ) async throws {
         let configuration = try await completeConfiguration()
-        try await JiraAPIClient(configuration: configuration).addComment(text, to: issue.key)
+        _ = try await JiraAPIClient(configuration: configuration).addComment(
+            text,
+            to: issue.key,
+            mentions: mentions,
+            dates: dates
+        )
         await loadComments(for: issue)
+    }
+
+    func searchMentionUsers(matching query: String, for issue: JiraIssue) async throws -> [JiraUser] {
+        let configuration = try await completeConfiguration()
+        return try await JiraAPIClient(configuration: configuration)
+            .assignableUsers(for: issue.key, matching: query)
     }
 
     func updateComment(_ text: String, comment: JiraComment, on issue: JiraIssue) async throws {
@@ -380,6 +542,106 @@ final class JiraService: ObservableObject {
         } catch {
             commentErrorsByIssueID[issue.id] = error.localizedDescription
         }
+    }
+
+    func loadTransitions(for issue: JiraIssue) async {
+        loadingTransitionIssueIDs.insert(issue.id)
+        transitionErrorsByIssueID[issue.id] = nil
+        defer { loadingTransitionIssueIDs.remove(issue.id) }
+
+        do {
+            let client = JiraAPIClient(configuration: try await completeConfiguration())
+            transitionsByIssueID[issue.id] = try await client.transitions(for: issue.key)
+        } catch {
+            transitionErrorsByIssueID[issue.id] = error.localizedDescription
+        }
+    }
+
+    func transition(_ issue: JiraIssue, using transition: JiraTransition) async throws {
+        transitioningIssueIDs.insert(issue.id)
+        transitionErrorsByIssueID[issue.id] = nil
+        defer { transitioningIssueIDs.remove(issue.id) }
+
+        do {
+            let client = JiraAPIClient(configuration: try await completeConfiguration())
+            try await client.transition(issue.key, using: transition.id)
+            if let index = issues.firstIndex(where: { $0.id == issue.id }) {
+                issues[index] = issues[index].replacingStatus(with: transition.to)
+            }
+            await loadTransitions(for: issue.replacingStatus(with: transition.to))
+        } catch {
+            transitionErrorsByIssueID[issue.id] = error.localizedDescription
+            throw error
+        }
+    }
+
+    func transitions(for issue: JiraIssue) -> [JiraTransition] {
+        transitionsByIssueID[issue.id] ?? []
+    }
+
+    func loadStandupUpdates(for issues: [JiraIssue], on date: Date = Date()) async {
+        isLoadingStandup = true
+        standupErrorMessage = nil
+        defer { isLoadingStandup = false }
+
+        do {
+            let client = JiraAPIClient(configuration: try await completeConfiguration())
+            standupUpdates = await client.standupUpdates(for: issues, on: date)
+        } catch {
+            standupErrorMessage = error.localizedDescription
+        }
+    }
+
+    func postStandup(
+        drafts: [JiraStandupDraft],
+        for issues: [JiraIssue],
+        mentionsByIssueID: [String: [JiraUser]] = [:],
+        datesByIssueID: [String: [JiraCommentDateToken]] = [:],
+        on date: Date = Date()
+    ) async throws -> JiraStandupPostResult {
+        let issueByID = Dictionary(uniqueKeysWithValues: issues.map { ($0.id, $0) })
+        let selected = drafts.filter {
+            $0.isIncluded && !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !selected.isEmpty else {
+            return JiraStandupPostResult(postedIssueIDs: [], errorsByIssueKey: [:])
+        }
+
+        let client = JiraAPIClient(configuration: try await completeConfiguration())
+        var postedIssueIDs: Set<String> = []
+        var errorsByIssueKey: [String: String] = [:]
+
+        for draft in selected {
+            guard let issue = issueByID[draft.issueID] else { continue }
+            postingStandupIssueIDs.insert(issue.id)
+            let text = JiraStandupUpdate.commentText(
+                state: draft.state,
+                note: draft.note,
+                date: date
+            )
+            do {
+                let comment = try await client.addComment(
+                    text,
+                    to: issue.key,
+                    mentions: mentionsByIssueID[issue.id] ?? [],
+                    dates: datesByIssueID[issue.id] ?? []
+                )
+                if let update = JiraStandupUpdate(comment: comment, issue: issue) {
+                    standupUpdates.removeAll { $0.id == update.id }
+                    standupUpdates.insert(update, at: 0)
+                }
+                commentsByIssueID[issue.id, default: []].append(comment)
+                postedIssueIDs.insert(issue.id)
+            } catch {
+                errorsByIssueKey[issue.key] = error.localizedDescription
+            }
+            postingStandupIssueIDs.remove(issue.id)
+        }
+
+        return JiraStandupPostResult(
+            postedIssueIDs: postedIssueIDs,
+            errorsByIssueKey: errorsByIssueKey
+        )
     }
 
     func comments(for issue: JiraIssue) -> [JiraComment] {
@@ -457,6 +719,18 @@ private struct JiraCommentsResponse: Decodable {
     let total: Int?
 }
 
+private struct JiraTransitionsResponse: Decodable {
+    let transitions: [JiraTransition]
+}
+
+private struct JiraTransitionRequest: Encodable {
+    let transition: Transition
+
+    struct Transition: Encodable {
+        let id: String
+    }
+}
+
 private struct JiraBulkChangelogRequest: Encodable {
     let issueIdsOrKeys: [String]
     let fieldIds: [String]
@@ -506,14 +780,18 @@ private struct JiraFlexibleTimestamp: Decodable {
 private struct JiraCommentRequest: Encodable {
     let body: Document
 
-    init(text: String) {
+    init(
+        text: String,
+        mentions: [JiraUser] = [],
+        dates: [JiraCommentDateToken] = []
+    ) {
         body = Document(
             version: 1,
             type: "doc",
             content: text.components(separatedBy: .newlines).map {
                 Paragraph(
                     type: "paragraph",
-                    content: $0.isEmpty ? [] : [TextNode(type: "text", text: $0)]
+                    content: Self.inlineNodes(in: $0, mentions: mentions, dates: dates)
                 )
             }
         )
@@ -527,12 +805,112 @@ private struct JiraCommentRequest: Encodable {
 
     struct Paragraph: Encodable {
         let type: String
-        let content: [TextNode]
+        let content: [InlineNode]
     }
 
-    struct TextNode: Encodable {
+    struct InlineNode: Encodable {
         let type: String
-        let text: String
+        let text: String?
+        let attrs: Attributes?
+
+        static func text(_ value: String) -> InlineNode {
+            InlineNode(type: "text", text: value, attrs: nil)
+        }
+
+        static func mention(_ user: JiraUser) -> InlineNode {
+            InlineNode(
+                type: "mention",
+                text: nil,
+                attrs: Attributes(
+                    id: user.accountId,
+                    text: "@\(user.displayName)",
+                    userType: "DEFAULT",
+                    timestamp: nil
+                )
+            )
+        }
+
+        static func date(_ token: JiraCommentDateToken) -> InlineNode {
+            InlineNode(
+                type: "date",
+                text: nil,
+                attrs: Attributes(
+                    id: nil,
+                    text: nil,
+                    userType: nil,
+                    timestamp: String(Int(token.date.timeIntervalSince1970 * 1_000))
+                )
+            )
+        }
+    }
+
+    struct Attributes: Encodable {
+        let id: String?
+        let text: String?
+        let userType: String?
+        let timestamp: String?
+    }
+
+    private enum Match {
+        case mention(JiraUser)
+        case date(JiraCommentDateToken)
+    }
+
+    private static func inlineNodes(
+        in line: String,
+        mentions: [JiraUser],
+        dates: [JiraCommentDateToken]
+    ) -> [InlineNode] {
+        guard !line.isEmpty else { return [] }
+        var remaining = line[...]
+        var nodes: [InlineNode] = []
+
+        while !remaining.isEmpty {
+            var bestRange: Range<Substring.Index>?
+            var bestMatch: Match?
+            var bestDistance = Int.max
+            var bestMarkerLength = 0
+
+            for user in mentions {
+                let marker = "@\(user.displayName)"
+                guard let range = remaining.range(of: marker) else { continue }
+                let distance = remaining.distance(from: remaining.startIndex, to: range.lowerBound)
+                if distance < bestDistance || (distance == bestDistance && marker.count > bestMarkerLength) {
+                    bestRange = range
+                    bestMatch = .mention(user)
+                    bestDistance = distance
+                    bestMarkerLength = marker.count
+                }
+            }
+
+            for token in dates {
+                guard let range = remaining.range(of: token.marker) else { continue }
+                let distance = remaining.distance(from: remaining.startIndex, to: range.lowerBound)
+                if distance < bestDistance || (distance == bestDistance && token.marker.count > bestMarkerLength) {
+                    bestRange = range
+                    bestMatch = .date(token)
+                    bestDistance = distance
+                    bestMarkerLength = token.marker.count
+                }
+            }
+
+            guard let range = bestRange, let match = bestMatch else {
+                nodes.append(.text(String(remaining)))
+                break
+            }
+
+            let prefix = String(remaining[..<range.lowerBound])
+            if !prefix.isEmpty { nodes.append(.text(prefix)) }
+            switch match {
+            case .mention(let user):
+                nodes.append(.mention(user))
+            case .date(let token):
+                nodes.append(.date(token))
+            }
+            remaining = remaining[range.upperBound...]
+        }
+
+        return nodes
     }
 }
 

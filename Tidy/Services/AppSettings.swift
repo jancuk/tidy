@@ -116,6 +116,19 @@ enum AppDefaults {
     static let jiraNotificationsLastSeenAt = "jiraNotificationsLastSeenAt"
     static let dashboardSection = "dashboardSection"
     static let jiraWorkspaceMode = "jiraWorkspaceMode"
+    static let asanaWorkspaceGID = "asanaWorkspaceGID"
+    static let asanaTokenExpiresAt = "asanaTokenExpiresAt"
+    static let terminalWorkingDirectory = "terminalWorkingDirectory"
+    static let sidebarCollapsed = "sidebarCollapsed"
+    static let mcpServerURL = "mcpServerURL"
+    static let mcpAPIKeyHeader = "mcpAPIKeyHeader"
+    static let mcpAutoRefreshEnabled = "mcpAutoRefreshEnabled"
+    static let mcpRefreshMinutes = "mcpRefreshMinutes"
+    static let slackNotificationChannels = "slackNotificationChannels"
+    static let slackNotificationGroups = "slackNotificationGroups"
+    static let slackIncludeGroupMentions = "slackIncludeGroupMentions"
+    static let slackNotificationTopicLimit = "slackNotificationTopicLimit"
+    static let settingsTab = "settingsTab"
 }
 
 extension UserDefaults {
@@ -142,7 +155,20 @@ extension UserDefaults {
             AppDefaults.jiraProjectKey: "",
             AppDefaults.jiraAssigneeAccountID: "",
             AppDefaults.dashboardSection: DashboardSection.home.rawValue,
-            AppDefaults.jiraWorkspaceMode: "issues"
+            AppDefaults.jiraWorkspaceMode: "issues",
+            AppDefaults.asanaWorkspaceGID: "",
+            AppDefaults.asanaTokenExpiresAt: 0.0,
+            AppDefaults.terminalWorkingDirectory: "",
+            AppDefaults.sidebarCollapsed: false,
+            AppDefaults.mcpServerURL: "",
+            AppDefaults.mcpAPIKeyHeader: "x-api-key",
+            AppDefaults.mcpAutoRefreshEnabled: false,
+            AppDefaults.mcpRefreshMinutes: 15,
+            AppDefaults.slackNotificationChannels: "",
+            AppDefaults.slackNotificationGroups: "@channel, @here, @everyone",
+            AppDefaults.slackIncludeGroupMentions: false,
+            AppDefaults.slackNotificationTopicLimit: 10,
+            AppDefaults.settingsTab: "General"
         ])
     }
 }

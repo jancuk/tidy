@@ -144,7 +144,13 @@ final class AskAIController {
         picker.canCreateDirectories = false
 
         if picker.runModal() == .OK {
-            for url in picker.urls {
+            let safeURLs = picker.urls.filter {
+                FolderAccessPolicy.allowsExplicitInspection(of: $0)
+            }
+            if safeURLs.count != picker.urls.count {
+                model.errorMessage = "For privacy, choose a specific project or working folder instead of your entire home or Library folder."
+            }
+            for url in safeURLs {
                 let source = AskAIFolderSource(alias: url.lastPathComponent, url: url)
                 if !model.folderSources.contains(source) {
                     model.folderSources.append(source)

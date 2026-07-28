@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7C47A00130A0000100A10001 /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C47A00230A0000100A10001 /* GhosttyKit.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7C04F7172FBA057300D2DD28 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -28,6 +32,7 @@
 		7C04F7162FBA057300D2DD28 /* TidyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TidyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C04F7202FBA057300D2DD28 /* TidyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TidyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C04F7362FBA066400D2DD28 /* Tidy.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = Tidy.xcodeproj; sourceTree = "<group>"; };
+		7C47A00230A0000100A10001 /* GhosttyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/Ghostty/GhosttyKit.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -53,6 +58,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7C47A00130A0000100A10001 /* GhosttyKit.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,6 +85,7 @@
 				7C04F70A2FBA057200D2DD28 /* Tidy */,
 				7C04F7192FBA057300D2DD28 /* TidyTests */,
 				7C04F7232FBA057300D2DD28 /* TidyUITests */,
+				7C47A00230A0000100A10001 /* GhosttyKit.xcframework */,
 				7C04F7092FBA057200D2DD28 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -411,7 +418,7 @@
 				CODE_SIGN_ENTITLEMENTS = Tidy/Tidy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -423,7 +430,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "-lsqlite3";
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+					"-lstdc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = sinau.Tidy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -440,7 +450,7 @@
 				CODE_SIGN_ENTITLEMENTS = Tidy/Tidy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -452,7 +462,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "-lsqlite3";
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+					"-lstdc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = sinau.Tidy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

@@ -126,9 +126,10 @@ struct CodexCLIJSONEventParser {
 
 struct CodexCLIService {
     static var codexHomeURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Tidy/Codex", isDirectory: true)
+        let directory = SecureLocalStorage.applicationSupportDirectory()
+            .appendingPathComponent("Codex", isDirectory: true)
+        SecureLocalStorage.ensureOwnerOnlyDirectory(at: directory)
+        return directory
     }
 
     static func run(

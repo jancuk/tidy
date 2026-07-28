@@ -14,7 +14,7 @@ struct DeepSeekProvider: GrammarProvider {
             .nilIfEmpty ?? "deepseek-v4-flash"
         let request = try Self.makeRequest(text: text, apiKey: apiKey, model: model)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await SecureHTTP.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 500
         guard status < 300 else {
             let body = String(data: data, encoding: .utf8) ?? "(no body)"

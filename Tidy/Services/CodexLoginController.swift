@@ -38,8 +38,14 @@ final class CodexLoginController: ObservableObject {
         do {
             try FileManager.default.createDirectory(
                 at: CodexCLIService.codexHomeURL,
-                withIntermediateDirectories: true
+                withIntermediateDirectories: true,
+                attributes: [
+                    .posixPermissions: NSNumber(
+                        value: SecureLocalStorage.ownerDirectoryPermissions
+                    )
+                ]
             )
+            SecureLocalStorage.ensureOwnerOnlyDirectory(at: CodexCLIService.codexHomeURL)
 
             let executable = try CodexCLIService.resolvedExecutableURL(for: command)
             let process = Process()
@@ -100,7 +106,7 @@ final class CodexLoginController: ObservableObject {
     }
 
     func openAuthURL() {
-        if let authURL {
+        if let authURL, SecureHTTP.isSafeWebURL(authURL) {
             NSWorkspace.shared.open(authURL)
         }
     }
@@ -153,7 +159,9 @@ final class CodexLoginController: ObservableObject {
         if authURL == nil,
            let range = text.range(of: #"https?://[^\s\[]+"#, options: .regularExpression) {
             let rawURL = String(text[range]).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-            authURL = URL(string: rawURL)
+            authURL = URL(string: rawURL).flatMap {
+                SecureHTTP.isSafeWebURL($0) ? $0 : nil
+            }
             if let authURL {
                 NSWorkspace.shared.open(authURL)
             }
@@ -193,8 +201,14 @@ final class CodexLoginController: ObservableObject {
                 let executable = try CodexCLIService.resolvedExecutableURL(for: command)
                 try FileManager.default.createDirectory(
                     at: CodexCLIService.codexHomeURL,
-                    withIntermediateDirectories: true
+                    withIntermediateDirectories: true,
+                    attributes: [
+                        .posixPermissions: NSNumber(
+                            value: SecureLocalStorage.ownerDirectoryPermissions
+                        )
+                    ]
                 )
+                SecureLocalStorage.ensureOwnerOnlyDirectory(at: CodexCLIService.codexHomeURL)
 
                 let process = Process()
                 process.executableURL = executable

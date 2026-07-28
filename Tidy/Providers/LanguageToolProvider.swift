@@ -17,7 +17,7 @@ struct LanguageToolProvider: GrammarProvider {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await SecureHTTP.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode ?? 500 < 300 else {
             throw GrammarProviderError.invalidResponse
         }

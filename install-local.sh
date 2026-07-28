@@ -72,6 +72,25 @@ if [ -d "$INSTALL_DIR/$APP_NAME" ]; then
 fi
 cp -R "$APP_IN_ARCHIVE" "$INSTALL_DIR/$APP_NAME"
 
+# Prefer a stable local Apple Development identity. A stable signature prevents
+# macOS Keychain from treating every replacement build as a different app.
+SIGNING_IDENTITY="$(
+  security find-identity -v -p codesigning 2>/dev/null \
+    | awk -F'"' '/Apple Development:|Developer ID Application:/ { print $2; exit }'
+)"
+if [ -n "$SIGNING_IDENTITY" ]; then
+  echo "==> Signing with local Apple Development identity…"
+  codesign \
+    --force \
+    --deep \
+    --sign "$SIGNING_IDENTITY" \
+    --entitlements "$REPO_DIR/Tidy/Tidy.entitlements" \
+    "$INSTALL_DIR/$APP_NAME"
+else
+  echo "==> No Apple Development identity found; using an ad-hoc signature."
+  codesign --force --deep --sign - "$INSTALL_DIR/$APP_NAME"
+fi
+
 # Clear quarantine so macOS doesn't block an ad-hoc signed build
 xattr -dr com.apple.quarantine "$INSTALL_DIR/$APP_NAME" 2>/dev/null || true
 

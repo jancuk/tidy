@@ -6,10 +6,13 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     case home
     case fileTidy
     case clipboard
+    case terminal
     case developerTools
     case correctionLog
     case aiRequestLog
+    case notifications
     case jira
+    case asana
     case settings
 
     var id: String { rawValue }
@@ -19,10 +22,13 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .home:           "Home"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard"
+        case .terminal:       "Terminal"
         case .developerTools: "Dev Tools"
         case .correctionLog:  "Corrections"
         case .aiRequestLog:   "AI Requests"
+        case .notifications:  "Notifications"
         case .jira:           "Jira"
+        case .asana:          "Asana"
         case .settings:       "Settings"
         }
     }
@@ -32,10 +38,13 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .home:           "Home"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard History"
+        case .terminal:       "Terminal"
         case .developerTools: "Developer Tools"
         case .correctionLog:  "Correction Log"
         case .aiRequestLog:   "AI Requests"
+        case .notifications:  "Unified Notifications"
         case .jira:           "Jira Active Sprint"
+        case .asana:          "Asana My Tasks"
         case .settings:       "Settings"
         }
     }
@@ -45,10 +54,13 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .home:           "house"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard"
+        case .terminal:       "terminal"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle"
         case .aiRequestLog:   "network"
+        case .notifications:  "bell"
         case .jira:           "shippingbox"
+        case .asana:          "checklist"
         case .settings:       "gear"
         }
     }
@@ -58,12 +70,40 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .home:           "house.fill"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard.fill"
+        case .terminal:       "terminal.fill"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle.fill"
         case .aiRequestLog:   "network"
+        case .notifications:  "bell.fill"
         case .jira:           "shippingbox.fill"
+        case .asana:          "checklist.checked"
         case .settings:       "gear"
         }
+    }
+
+    var shortcutDigit: Character {
+        switch self {
+        case .home:           "1"
+        case .fileTidy:       "2"
+        case .clipboard:      "3"
+        case .terminal:       "4"
+        case .developerTools: "5"
+        case .correctionLog:  "6"
+        case .aiRequestLog:   "7"
+        case .notifications:  "n"
+        case .jira:           "8"
+        case .asana:          "9"
+        case .settings:       "0"
+        }
+    }
+
+    var shortcutLabel: String {
+        if self == .notifications { return "⌘⇧N" }
+        return "⌘\(shortcutDigit)"
+    }
+
+    var shortcutModifiers: EventModifiers {
+        self == .notifications ? [.command, .shift] : [.command]
     }
 
     var isBottomGroup: Bool { self == .settings }
@@ -73,6 +113,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
 struct SidebarView: View {
     @Binding var selection: DashboardSection
+    @Binding var isCollapsed: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     private var topSections: [DashboardSection] {
@@ -118,18 +159,28 @@ struct SidebarView: View {
 
     private var appBrand: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.accentColor)
-                    .frame(width: 28, height: 28)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 30, height: 30)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .accessibilityLabel("Tidy app icon")
             Text("Tidy")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color(NSColor.labelColor))
             Spacer()
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isCollapsed = true
+                }
+            } label: {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+            }
+            .buttonStyle(.plain)
+            .help("Hide sidebar (⌘/)")
+            .accessibilityLabel("Hide sidebar")
         }
         .padding(.horizontal, 14)
         .padding(.top, 16)
@@ -154,6 +205,13 @@ struct SidebarView: View {
                     .font(.system(size: 13, weight: active ? .semibold : .regular))
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                Text(section.shortcutLabel)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(
+                        active
+                            ? Color.accentColor.opacity(0.72)
+                            : Color(NSColor.tertiaryLabelColor)
+                    )
             }
             .foregroundStyle(active ? Color.accentColor : Color(NSColor.secondaryLabelColor))
             .padding(.horizontal, 10)
@@ -165,7 +223,7 @@ struct SidebarView: View {
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
-        .help(section.fullTitle)
+        .help("\(section.fullTitle) (\(section.shortcutLabel))")
     }
 }
 
@@ -173,9 +231,16 @@ struct SidebarView: View {
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
+
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(selection: $appState.selectedDashboardSection)
+            if !appState.isSidebarCollapsed {
+                SidebarView(
+                    selection: $appState.selectedDashboardSection,
+                    isCollapsed: $appState.isSidebarCollapsed
+                )
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
 
             Group {
                 switch appState.selectedDashboardSection {
@@ -187,6 +252,9 @@ struct DashboardView: View {
                 case .clipboard:
                     ClipboardListView()
                         .environmentObject(appState.clipboardService)
+                case .terminal:
+                    TerminalView(isSidebarCollapsed: $appState.isSidebarCollapsed)
+                        .environmentObject(appState.terminalService)
                 case .developerTools:
                     DeveloperToolsView()
                 case .correctionLog:
@@ -195,9 +263,15 @@ struct DashboardView: View {
                 case .aiRequestLog:
                     AIRequestLogView()
                         .environmentObject(appState.aiRequestLogStore)
+                case .notifications:
+                    NotificationCenterView()
+                        .environmentObject(appState.unifiedNotificationService)
                 case .jira:
                     JiraView()
                         .environmentObject(appState.jiraService)
+                case .asana:
+                    AsanaView()
+                        .environmentObject(appState.asanaService)
                 case .settings:
                     SettingsView()
                         .environmentObject(appState)
@@ -206,8 +280,28 @@ struct DashboardView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
+                if appState.isSidebarCollapsed,
+                   appState.selectedDashboardSection != .terminal {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            appState.isSidebarCollapsed = false
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 13, weight: .medium))
+                            .frame(width: 30, height: 30)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show sidebar (⌘/)")
+                    .accessibilityLabel("Show sidebar")
+                    .padding(12)
+                }
+            }
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .animation(.easeInOut(duration: 0.18), value: appState.isSidebarCollapsed)
     }
 }
 

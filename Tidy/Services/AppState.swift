@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Foundation
 import ServiceManagement
 
 @MainActor
@@ -9,9 +10,17 @@ final class AppState: ObservableObject {
     let aiRequestLogStore: AIRequestLogStore
     let suggestionMonitor: SuggestionMonitor
     let jiraService: JiraService
+    let asanaService: AsanaService
+    let terminalService: TerminalService
+    let unifiedNotificationService: UnifiedNotificationService
     @Published var selectedDashboardSection: DashboardSection {
         didSet {
             UserDefaults.standard.set(selectedDashboardSection.rawValue, forKey: AppDefaults.dashboardSection)
+        }
+    }
+    @Published var isSidebarCollapsed: Bool {
+        didSet {
+            UserDefaults.standard.set(isSidebarCollapsed, forKey: AppDefaults.sidebarCollapsed)
         }
     }
 
@@ -25,9 +34,13 @@ final class AppState: ObservableObject {
 
     init() {
         UserDefaults.standard.registerTidyDefaults()
-        selectedDashboardSection = DashboardSection(
-            rawValue: UserDefaults.standard.string(forKey: AppDefaults.dashboardSection) ?? ""
-        ) ?? .home
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        selectedDashboardSection = isRunningTests
+            ? .home
+            : DashboardSection(
+                rawValue: UserDefaults.standard.string(forKey: AppDefaults.dashboardSection) ?? ""
+            ) ?? .home
+        isSidebarCollapsed = UserDefaults.standard.bool(forKey: AppDefaults.sidebarCollapsed)
         clipboardService = ClipboardService()
         correctionLogStore = CorrectionLogStore()
         aiRequestLogStore = AIRequestLogStore()
@@ -36,6 +49,9 @@ final class AppState: ObservableObject {
         askAIController = AskAIController(requestLogStore: aiRequestLogStore)
         suggestionMonitor = SuggestionMonitor()
         jiraService = JiraService()
+        asanaService = AsanaService()
+        terminalService = TerminalService()
+        unifiedNotificationService = UnifiedNotificationService(requestLogStore: aiRequestLogStore)
 
         hotkeyManager.onGrammar = { [weak self] in
             Task { @MainActor in self?.grammarService.tidySelectedText() }
@@ -71,6 +87,7 @@ final class AppState: ObservableObject {
         NSApp.setActivationPolicy(.regular)
         clipboardService.start()
         suggestionMonitor.start()
+        unifiedNotificationService.start()
         registerHotkeys()
         if !UserDefaults.standard.bool(forKey: AppDefaults.didCompleteFirstRun) {
             Permissions.requestAccessibilityIfNeeded()
@@ -106,6 +123,17 @@ final class AppState: ObservableObject {
         jiraService.requestNotificationCenter()
         NSApp.activate(ignoringOtherApps: true)
         NSApp.windows.first(where: { $0.title == "Tidy" })?.makeKeyAndOrderFront(nil)
+    }
+
+    func openUnifiedNotifications() {
+        selectedDashboardSection = .notifications
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.title == "Tidy" })?.makeKeyAndOrderFront(nil)
+    }
+
+    func openMCPSettings() {
+        UserDefaults.standard.set("MCP", forKey: AppDefaults.settingsTab)
+        selectedDashboardSection = .settings
     }
 
     func refreshJira() async {

@@ -67,9 +67,20 @@ final class FileTidyService {
         var applied: [FileTidyAppliedMove] = []
 
         for proposal in proposals {
+            guard isContained(proposal.sourceURL, in: rootURL),
+                  isContained(proposal.destinationURL, in: rootURL) else {
+                throw FileTidyError.moveFailed(
+                    "Refusing to move \(proposal.fileName) outside the selected folder."
+                )
+            }
             guard fileManager.fileExists(atPath: proposal.sourcePath) else { continue }
             do {
                 let finalDestination = uniqueDestination(for: proposal.destinationURL)
+                guard isContained(finalDestination, in: rootURL) else {
+                    throw FileTidyError.moveFailed(
+                        "Refusing to move \(proposal.fileName) outside the selected folder."
+                    )
+                }
                 try fileManager.createDirectory(
                     at: finalDestination.deletingLastPathComponent(),
                     withIntermediateDirectories: true
@@ -93,10 +104,17 @@ final class FileTidyService {
     }
 
     func undo(_ session: FileTidyUndoSession) throws {
+        let rootURL = URL(fileURLWithPath: session.rootPath, isDirectory: true)
         for move in session.moves.reversed() {
             let currentURL = URL(fileURLWithPath: move.finalDestinationPath)
             let originalURL = URL(fileURLWithPath: move.sourcePath)
 
+            guard isContained(currentURL, in: rootURL),
+                  isContained(originalURL, in: rootURL) else {
+                throw FileTidyError.undoBlocked(
+                    "Cannot undo \(move.fileName) because its path is outside the original folder."
+                )
+            }
             guard fileManager.fileExists(atPath: currentURL.path) else { continue }
             guard !fileManager.fileExists(atPath: originalURL.path) else {
                 throw FileTidyError.undoBlocked("Cannot undo \(move.fileName) because the original path is occupied.")
@@ -189,7 +207,7 @@ final class FileTidyService {
             return proposal(
                 for: record,
                 category: .screenshots,
-                destinationFolder: home("Pictures/Screenshots"),
+                destinationFolder: organizedFolder(in: rootURL, path: "Screenshots"),
                 reason: "Screenshot-style name or image capture.",
                 risk: .low,
                 selected: true
@@ -198,7 +216,7 @@ final class FileTidyService {
             return proposal(
                 for: record,
                 category: .installers,
-                destinationFolder: installersFolder(for: rootURL),
+                destinationFolder: organizedFolder(in: rootURL, path: "Installers"),
                 reason: "Installer package or disk image.",
                 risk: .low,
                 selected: true
@@ -216,7 +234,7 @@ final class FileTidyService {
             return proposal(
                 for: record,
                 category: .documents,
-                destinationFolder: documentsFolder(for: record.url),
+                destinationFolder: documentsFolder(for: record.url, rootURL: rootURL),
                 reason: "Document that fits a standard Documents subfolder.",
                 risk: .low,
                 selected: true
@@ -397,27 +415,24 @@ final class FileTidyService {
         return buildArtifactNames.contains(name) || name.hasSuffix(".xcarchive")
     }
 
-    private func installersFolder(for rootURL: URL) -> URL {
-        rootURL.lastPathComponent == "Downloads"
-            ? rootURL.appendingPathComponent("Installers", isDirectory: true)
-            : home("Downloads/Installers")
-    }
-
-    private func documentsFolder(for url: URL) -> URL {
-        switch url.pathExtension.lowercased() {
+    private func documentsFolder(for url: URL, rootURL: URL) -> URL {
+        let category = switch url.pathExtension.lowercased() {
         case "pdf":
-            return home("Documents/PDFs")
+            "PDFs"
         case "xls", "xlsx", "csv", "tsv", "numbers":
-            return home("Documents/Spreadsheets")
+            "Spreadsheets"
         case "ppt", "pptx", "key":
-            return home("Documents/Presentations")
+            "Presentations"
         default:
-            return home("Documents/Documents")
+            "Other Documents"
         }
+        return organizedFolder(in: rootURL, path: "Documents/\(category)")
     }
 
-    private func home(_ relativePath: String) -> URL {
-        relativePath.split(separator: "/").reduce(fileManager.homeDirectoryForCurrentUser) { url, component in
+    private func organizedFolder(in rootURL: URL, path: String) -> URL {
+        path.split(separator: "/").reduce(
+            rootURL.appendingPathComponent("Tidy Organized", isDirectory: true)
+        ) { url, component in
             url.appendingPathComponent(String(component), isDirectory: true)
         }
     }
@@ -438,6 +453,30 @@ final class FileTidyService {
         }
 
         return directory.appendingPathComponent("\(base) \(UUID().uuidString).\(ext)")
+    }
+
+    private func isContained(_ candidate: URL, in rootURL: URL) -> Bool {
+        let rootPath = canonicalPath(for: rootURL)
+        let candidatePath = canonicalPath(for: candidate)
+        return candidatePath != rootPath
+            && candidatePath.hasPrefix(rootPath.hasSuffix("/") ? rootPath : rootPath + "/")
+    }
+
+    private func canonicalPath(for url: URL) -> String {
+        var existingAncestor = url.standardizedFileURL
+        var missingComponents: [String] = []
+
+        while !fileManager.fileExists(atPath: existingAncestor.path),
+              existingAncestor.path != "/" {
+            missingComponents.insert(existingAncestor.lastPathComponent, at: 0)
+            existingAncestor.deleteLastPathComponent()
+        }
+
+        var canonicalURL = existingAncestor.resolvingSymlinksInPath()
+        for component in missingComponents {
+            canonicalURL.appendPathComponent(component)
+        }
+        return canonicalURL.standardizedFileURL.path
     }
 
     private func fileHash(_ url: URL) -> String? {
