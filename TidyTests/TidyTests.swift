@@ -1581,8 +1581,15 @@ struct TidyTests {
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
         #expect(body["model"] as? String == "deepseek-v4-flash")
         #expect(body["max_tokens"] as? Int == 1_024)
+        #expect((body["thinking"] as? [String: Any])?["type"] as? String == "disabled")
         #expect(messages.first?["role"] as? String == "user")
         #expect((messages.first?["content"] as? String)?.contains("Reply with exactly: pong") == true)
+    }
+
+    @Test func deepSeekRetryDoublesTheOutputBudgetWithinLimit() {
+        #expect(DeepSeekProvider.retryMaxTokens(after: 1_024) == 2_048)
+        #expect(DeepSeekProvider.retryMaxTokens(after: 8_192) == 16_384)
+        #expect(DeepSeekProvider.retryMaxTokens(after: 16_384) == 16_384)
     }
 
     @Test func deepSeekResponseSkipsThinkingAndReturnsText() throws {
@@ -1597,6 +1604,26 @@ struct TidyTests {
         #expect(throws: GrammarProviderError.self) {
             try DeepSeekProvider.correctedText(from: data)
         }
+    }
+
+    @Test func deepSeekNeverReturnsPartialCorrectedText() {
+        let data = Data(#"{"content":[{"type":"text","text":"A partial correction"}],"stop_reason":"max_tokens"}"#.utf8)
+
+        #expect(throws: GrammarProviderError.self) {
+            try DeepSeekProvider.correctedText(from: data)
+        }
+    }
+
+    @Test func grammarExperienceFormatsFastAndSlowDurations() {
+        #expect(GrammarService.durationDescription(milliseconds: 420) == "<1s")
+        #expect(GrammarService.durationDescription(milliseconds: 1_250) == "1.2s")
+        #expect(GrammarService.durationDescription(milliseconds: 12_600) == "13s")
+    }
+
+    @Test func grammarExperienceExplainsTimeoutWithoutLosingText() {
+        let message = GrammarService.userFacingMessage(for: URLError(.timedOut))
+        #expect(message.contains("longer than usual"))
+        #expect(message.contains("text is unchanged"))
     }
 
     private func makeTemporaryFolder() throws -> URL {
