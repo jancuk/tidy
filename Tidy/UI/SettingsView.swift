@@ -74,6 +74,15 @@ struct SettingsView: View {
         .onChange(of: selectedTab) { _, tab in
             storedSettingsTab = tab.rawValue
         }
+        .onChange(of: appState.credentialRevision) { _, _ in
+            keyValues.removeAll()
+            loadKeychainValues()
+            jiraAPIToken = ""
+            asanaClientID = ""
+            asanaClientSecret = ""
+            asanaAuthCode = ""
+            mcpAPIKey = ""
+        }
     }
 
     // MARK: - Header
@@ -104,6 +113,7 @@ struct SettingsView: View {
         case model     = "Model"
         case clipboard = "Clipboard"
         case hotkeys   = "Hotkeys"
+        case privacy   = "Privacy"
         case jira      = "Jira"
         case asana     = "Asana"
         case mcp       = "MCP"
@@ -114,6 +124,7 @@ struct SettingsView: View {
             case .model:     "cpu"
             case .clipboard: "doc.on.clipboard"
             case .hotkeys:   "keyboard"
+            case .privacy:   "lock.shield"
             case .jira:      "shippingbox"
             case .asana:     "checklist"
             case .mcp:       "point.3.connected.trianglepath.dotted"
@@ -166,6 +177,9 @@ struct SettingsView: View {
                 case .model:     modelContent
                 case .clipboard: clipboardContent
                 case .hotkeys:   hotkeysContent
+                case .privacy:
+                    PrivacyCenterView()
+                        .environmentObject(appState)
                 case .jira:      jiraContent
                 case .asana:     asanaContent
                 case .mcp:       mcpContent

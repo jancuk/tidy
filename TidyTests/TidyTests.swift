@@ -645,11 +645,51 @@ struct TidyTests {
         #expect(DashboardSection.notifications.fullTitle == "Unified Notifications")
     }
 
+    @Test func dashboardSectionIncludesDeveloperWorkflows() {
+        #expect(DashboardSection.allCases.contains(.workflows))
+        #expect(DashboardSection.workflows.fullTitle == "Developer Workflows")
+        #expect(DashboardSection.workflows.shortcutLabel == "⌘⇧W")
+    }
+
     @Test func dashboardSectionShortcutsFollowSidebarOrder() {
-        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1234567n890"))
+        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1w234567n890"))
         #expect(DashboardSection.notifications.shortcutLabel == "⌘⇧N")
         #expect(DashboardSection.asana.shortcutLabel == "⌘9")
         #expect(DashboardSection.settings.shortcutLabel == "⌘0")
+    }
+
+    @Test func tidyGoalsRoundTripAndMapToFocusedSections() {
+        let goals: Set<TidyGoal> = [.writing, .cleanup, .dailyWork]
+
+        let decoded = TidyGoal.decode(TidyGoal.encode(goals))
+
+        #expect(decoded == goals)
+        #expect(TidyGoal.cleanup.dashboardSections == [.fileTidy])
+        #expect(TidyGoal.dailyWork.dashboardSections.contains(.workflows))
+        #expect(TidyGoal.dailyWork.dashboardSections.contains(.notifications))
+    }
+
+    @Test func privacyPolicyIdentifiesOnlyOnDeviceProvidersAsLocal() {
+        #expect(GrammarProviderID.ollama.processesContentLocally)
+        #expect(GrammarProviderID.languageTool.processesContentLocally)
+        #expect(!GrammarProviderID.openAI.processesContentLocally)
+        #expect(!GrammarProviderID.codexCLI.processesContentLocally)
+    }
+
+    @Test func developerWorkflowRegistryCoversExpectedOutcomes() {
+        #expect(Set(DeveloperWorkflowRegistry.all.map(\.id)) == Set(DeveloperWorkflowID.allCases))
+        #expect(DeveloperWorkflowRegistry.all.allSatisfy { !$0.title.isEmpty })
+        #expect(DeveloperWorkflowRegistry.all.first { $0.id == .cleanProject }?.requiredSections == [.fileTidy])
+    }
+
+    @Test func connectorRegistryDeclaresCapabilitiesAndPrivacy() {
+        let connectors = ConnectorRegistry.notificationConnectors
+
+        #expect(connectors.map(\.source) == [.slack, .gmail, .googleCalendar])
+        #expect(connectors.allSatisfy { $0.descriptor.isReadOnlyByDefault })
+        #expect(connectors.allSatisfy { $0.descriptor.privacy.retention == .summaryCache })
+        #expect(MCPIntegrationSource.slack.connectorDescriptor.capabilities.contains(.readMessages))
+        #expect(ConnectorRegistry.builtInDescriptors.contains { $0.id == "jira-native" })
     }
 
     @Test func terminalDefersTidyShortcutsToApplication() {

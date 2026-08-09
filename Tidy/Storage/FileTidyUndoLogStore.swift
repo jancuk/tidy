@@ -28,6 +28,11 @@ final class FileTidyUndoLogStore: ObservableObject {
         save()
     }
 
+    func clear() {
+        sessions.removeAll()
+        save()
+    }
+
     private func load() {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([FileTidyUndoSession].self, from: data) else {

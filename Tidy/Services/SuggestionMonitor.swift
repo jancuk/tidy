@@ -112,6 +112,7 @@ final class SuggestionMonitor: ObservableObject {
             defer { inflight = false }
             do {
                 let providerID = currentProviderID()
+                try AppPrivacyPolicy.validateAIProvider(providerID)
                 let provider = GrammarProviderFactory.provider(for: providerID)
                 let corrected = try await provider.fixGrammar(text, language: nil)
                 let cleanedCorrected = corrected.trimmingCharacters(in: .whitespacesAndNewlines)

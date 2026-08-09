@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      DEVELOPER_ID_CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+      DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      - name: Verify release secrets
+        run: |
+          required=(
+            APPLE_TEAM_ID APPLE_ID APPLE_APP_PASSWORD
+            DEVELOPER_ID_CERTIFICATE DEVELOPER_ID_CERTIFICATE_PASSWORD
+            KEYCHAIN_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required repository secret: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Import Developer ID certificate
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/tidy-signing.keychain-db"
+          printf '%s' "$DEVELOPER_ID_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+
+      - name: Build archive
+        run: |
+          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
+          if [[ -z "$identity" ]]; then
+            echo "Developer ID Application identity was not imported." >&2
+            exit 1
+          fi
+          xcodebuild archive \
+            -project Tidy.xcodeproj \
+            -scheme Tidy \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Tidy.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$identity"
+
+      - name: Package application
+        run: |
+          app="$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Tidy.zip"
+
+      - name: Notarize and staple
+        run: |
+          xcrun notarytool submit "$RUNNER_TEMP/Tidy.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app"
+
+      - name: Create DMG
+        run: |
+          staging="$RUNNER_TEMP/dmg"
+          mkdir -p "$staging"
+          ditto "$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app" "$staging/Tidy.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create \
+            -volname Tidy \
+            -srcfolder "$staging" \
+            -ov \
+            -format UDZO \
+            "$RUNNER_TEMP/Tidy.dmg"
+          xcrun notarytool submit "$RUNNER_TEMP/Tidy.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$RUNNER_TEMP/Tidy.dmg"
+          shasum -a 256 "$RUNNER_TEMP/Tidy.dmg" > "$RUNNER_TEMP/Tidy.dmg.sha256"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          "$RUNNER_TEMP/Tidy.dmg"
+          "$RUNNER_TEMP/Tidy.dmg.sha256"
+          --verify-tag
+          --generate-notes
+          --title "Tidy ${GITHUB_REF_NAME}"

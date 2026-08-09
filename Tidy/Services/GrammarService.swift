@@ -37,6 +37,7 @@ final class GrammarService: ObservableObject {
                 }
 
                 let providerID = currentProviderID()
+                try AppPrivacyPolicy.validateAIProvider(providerID)
                 let provider = GrammarProviderFactory.provider(for: providerID)
                 let start = Date()
                 do {

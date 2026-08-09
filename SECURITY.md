@@ -26,6 +26,8 @@ the report private until a fix is available.
 - Ask AI sends the selected text and explicitly selected folder context to the
   configured provider. Common credential and local-configuration files are
   excluded, but users should still review the selected scope before sending it.
+- Local-only AI mode enforces Ollama or LanguageTool before grammar, Ask AI,
+  auto-suggestion, clipboard, or notification-summary content is processed.
 - File Tidy confines apply and undo operations to the selected folder.
 
 ## Public contributions

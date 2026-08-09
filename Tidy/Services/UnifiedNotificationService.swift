@@ -2,11 +2,8 @@ import Foundation
 
 @MainActor
 final class UnifiedNotificationService: ObservableObject {
-    static let notificationSources: [MCPIntegrationSource] = [
-        .slack,
-        .gmail,
-        .googleCalendar
-    ]
+    static let notificationConnectors = ConnectorRegistry.notificationConnectors
+    static let notificationSources = notificationConnectors.map(\.source)
 
     @Published private(set) var digests: [UnifiedNotificationDigest] = []
     @Published private(set) var briefing: UnifiedNotificationBriefing?
@@ -60,6 +57,16 @@ final class UnifiedNotificationService: ObservableObject {
         start()
     }
 
+    func clearCache() {
+        digests.removeAll()
+        briefing = nil
+        sourceErrors.removeAll()
+        lastUpdatedAt = nil
+        connectionStatus = "Not connected"
+        try? FileManager.default.removeItem(at: cacheURL)
+        try? FileManager.default.removeItem(at: briefingCacheURL)
+    }
+
     func testConnection(
         configuration: MCPServerConfiguration
     ) async throws -> MCPConnectionTestResult {
@@ -93,7 +100,8 @@ final class UnifiedNotificationService: ObservableObject {
             var refreshed: [UnifiedNotificationDigest] = []
             var errors: [MCPIntegrationSource: String] = [:]
 
-            for source in Self.notificationSources {
+            for connector in Self.notificationConnectors {
+                let source = connector.source
                 do {
                     let route = try await MCPToolBroker.resolve(
                         source: source,
