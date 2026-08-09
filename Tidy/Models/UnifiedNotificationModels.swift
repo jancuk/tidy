@@ -10,6 +10,11 @@ struct UnifiedNotificationDigest: Identifiable, Codable, Equatable {
     var id: String { source.rawValue }
 }
 
+struct UnifiedNotificationBriefing: Codable, Equatable {
+    let summary: String
+    let generatedAt: Date
+}
+
 extension MCPIntegrationSource: Codable {
     var notificationSystemImage: String {
         switch self {
@@ -18,6 +23,16 @@ extension MCPIntegrationSource: Codable {
         case .googleCalendar: "calendar"
         case .newRelic: "waveform.path.ecg"
         case .jira: "shippingbox.fill"
+        }
+    }
+
+    var notificationSubtitle: String {
+        switch self {
+        case .slack: "Mentions, decisions, and blockers"
+        case .gmail: "Important threads and replies"
+        case .googleCalendar: "Meetings, conflicts, and preparation"
+        case .newRelic: "Incidents and service health"
+        case .jira: "Assigned work and delivery changes"
         }
     }
 }

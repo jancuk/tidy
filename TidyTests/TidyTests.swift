@@ -305,6 +305,12 @@ struct TidyTests {
         #expect(MCPIntegrationSource.googleCalendar.defaultQuery.isEmpty)
     }
 
+    @Test func notificationSourcesExposeEngineerFocusedUXCopy() {
+        #expect(MCPIntegrationSource.slack.notificationSubtitle == "Mentions, decisions, and blockers")
+        #expect(MCPIntegrationSource.gmail.notificationSubtitle == "Important threads and replies")
+        #expect(MCPIntegrationSource.googleCalendar.notificationSubtitle == "Meetings, conflicts, and preparation")
+    }
+
     @Test func slackNotificationFocusBuildsWhitelistedMentionQueries() {
         let focus = SlackNotificationFocus(
             channelsText: "#Product-Dev, customer-support\n#product-dev, in:all",
@@ -445,6 +451,53 @@ struct TidyTests {
 
         #expect(summary.contains("First important notification"))
         #expect(summary.split(separator: "\n").count == 3)
+    }
+
+    @Test func notificationBriefingFallbackIncludesConnectedSources() {
+        let digests = [
+            UnifiedNotificationDigest(
+                source: .slack,
+                summary: "Review the deployment blocker in #engineering.",
+                rawPreview: "",
+                toolName: "slack_search",
+                fetchedAt: .now
+            ),
+            UnifiedNotificationDigest(
+                source: .gmail,
+                summary: "Reply to the production access request.",
+                rawPreview: "",
+                toolName: "gmail_search",
+                fetchedAt: .now
+            ),
+            UnifiedNotificationDigest(
+                source: .googleCalendar,
+                summary: "Architecture review starts at 2 PM.",
+                rawPreview: "",
+                toolName: "calendar_events",
+                fetchedAt: .now
+            )
+        ]
+
+        let summary = NotificationBriefingFallback.summarize(digests)
+
+        #expect(summary.contains("**Focus now**"))
+        #expect(summary.contains("**Actions**"))
+        #expect(summary.contains("**Schedule**"))
+        #expect(summary.contains("Slack"))
+        #expect(summary.contains("Gmail"))
+        #expect(summary.contains("Google Calendar"))
+    }
+
+    @Test func unifiedNotificationBriefingSupportsCacheRoundTrip() throws {
+        let briefing = UnifiedNotificationBriefing(
+            summary: "**Focus now** — Review the release.",
+            generatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        let data = try JSONEncoder().encode(briefing)
+        let decoded = try JSONDecoder().decode(UnifiedNotificationBriefing.self, from: data)
+
+        #expect(decoded == briefing)
     }
 
     @Test func askAIMentionParserFindsMultipleFolders() {
