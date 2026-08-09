@@ -24,7 +24,7 @@ struct TidyApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandMenu("Navigate") {
-                ForEach(DashboardSection.allCases) { section in
+                ForEach(appState.visibleDashboardSections) { section in
                     Button(section.fullTitle) {
                         appState.selectedDashboardSection = section
                     }

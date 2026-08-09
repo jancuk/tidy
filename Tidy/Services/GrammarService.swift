@@ -7,6 +7,7 @@ final class GrammarService: ObservableObject {
     private let hud: HUDController
     private let logStore: CorrectionLogStore
     private let requestLogStore: AIRequestLogStore
+    private var activeCorrectionTask: Task<Void, Never>?
 
     init(hud: HUDController, logStore: CorrectionLogStore, requestLogStore: AIRequestLogStore) {
         self.hud = hud
@@ -15,15 +16,22 @@ final class GrammarService: ObservableObject {
     }
 
     func tidySelectedText() {
+        guard activeCorrectionTask == nil else {
+            hud.show(.loading("Already tidying—your text is safe"))
+            return
+        }
+
         guard Permissions.requestAccessibilityIfNeeded() else {
             hud.show(.warning("Allow Accessibility"), autoDismissAfter: 2)
             Permissions.openAccessibilitySettings()
             return
         }
 
-        hud.show(.loading("Tidying..."))
+        hud.show(.loading("Reading your selection…"))
 
-        Task {
+        activeCorrectionTask = Task {
+            defer { activeCorrectionTask = nil }
+
             do {
                 let selectedText = try await readSelectedText()
                 guard !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -37,12 +45,20 @@ final class GrammarService: ObservableObject {
                 }
 
                 let providerID = currentProviderID()
+                try AppPrivacyPolicy.validateAIProvider(providerID)
                 let provider = GrammarProviderFactory.provider(for: providerID)
+                hud.show(.loading("Tidying with \(provider.displayName)…"))
+
+                let progressTask = Task { @MainActor [hud] in
+                    try? await Task.sleep(for: .seconds(4))
+                    guard !Task.isCancelled else { return }
+                    hud.show(.loading("Still working—your text is safe"))
+                }
                 let start = Date()
                 do {
                     let corrected = try await provider.fixGrammar(selectedText, language: nil)
+                    progressTask.cancel()
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
-                    let hudHandled = try await replaceSelection(with: corrected)
                     logStore.append(original: selectedText, corrected: corrected, providerID: providerID.rawValue)
                     requestLogStore.append(AIRequestLogEntry(
                         providerName: provider.displayName,
@@ -50,10 +66,18 @@ final class GrammarService: ObservableObject {
                         durationMs: ms,
                         source: "grammar"
                     ))
+
+                    if corrected == selectedText {
+                        hud.show(.success("Already tidy"), autoDismissAfter: 1)
+                        return
+                    }
+
+                    let hudHandled = try await replaceSelection(with: corrected)
                     if !hudHandled {
-                        hud.show(.success("Tidied"), autoDismissAfter: 0.8)
+                        hud.show(.success("Tidied in \(Self.durationDescription(milliseconds: ms))"), autoDismissAfter: 1.2)
                     }
                 } catch {
+                    progressTask.cancel()
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
                     requestLogStore.append(AIRequestLogEntry(
                         providerName: provider.displayName,
@@ -66,9 +90,31 @@ final class GrammarService: ObservableObject {
                     throw error
                 }
             } catch {
-                hud.show(.error(error.localizedDescription), autoDismissAfter: 2.5)
+                hud.show(.error(Self.userFacingMessage(for: error)), autoDismissAfter: 4)
             }
         }
+    }
+
+    nonisolated static func durationDescription(milliseconds: Int) -> String {
+        if milliseconds < 1_000 { return "<1s" }
+        let seconds = Double(milliseconds) / 1_000
+        return seconds < 10 ? String(format: "%.1fs", seconds) : "\(Int(seconds.rounded()))s"
+    }
+
+    nonisolated static func userFacingMessage(for error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut:
+                return "This is taking longer than usual. Your text is unchanged—please try again."
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "You're offline. Your text is unchanged—check your connection and try again."
+            case .cancelled:
+                return "Tidying was cancelled. Your text is unchanged."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
     }
 
     private func httpStatus(from error: Error) -> Int? {

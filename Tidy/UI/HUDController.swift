@@ -11,8 +11,11 @@ final class HUDController {
     }
 
     private var window: NSWindow?
+    private var dismissTask: Task<Void, Never>?
 
     func show(_ state: State, autoDismissAfter delay: TimeInterval? = nil) {
+        dismissTask?.cancel()
+
         if window == nil {
             let hostingView = NSHostingView(rootView: HUDView(state: state))
             let panel = NSPanel(
@@ -36,14 +39,17 @@ final class HUDController {
         window?.orderFrontRegardless()
 
         if let delay {
-            Task { @MainActor in
+            dismissTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
                 self.dismiss()
             }
         }
     }
 
     func dismiss() {
+        dismissTask?.cancel()
+        dismissTask = nil
         window?.orderOut(nil)
     }
 

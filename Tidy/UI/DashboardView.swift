@@ -4,6 +4,7 @@ import SwiftUI
 
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
+    case workflows
     case fileTidy
     case clipboard
     case terminal
@@ -20,6 +21,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var title: String {
         switch self {
         case .home:           "Home"
+        case .workflows:      "Workflows"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard"
         case .terminal:       "Terminal"
@@ -36,6 +38,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var fullTitle: String {
         switch self {
         case .home:           "Home"
+        case .workflows:      "Developer Workflows"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard History"
         case .terminal:       "Terminal"
@@ -52,6 +55,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var systemImage: String {
         switch self {
         case .home:           "house"
+        case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard"
         case .terminal:       "terminal"
@@ -68,6 +72,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var activeSystemImage: String {
         switch self {
         case .home:           "house.fill"
+        case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard.fill"
         case .terminal:       "terminal.fill"
@@ -84,6 +89,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var shortcutDigit: Character {
         switch self {
         case .home:           "1"
+        case .workflows:      "w"
         case .fileTidy:       "2"
         case .clipboard:      "3"
         case .terminal:       "4"
@@ -99,11 +105,15 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var shortcutLabel: String {
         if self == .notifications { return "⌘⇧N" }
+        if self == .workflows { return "⌘⇧W" }
         return "⌘\(shortcutDigit)"
     }
 
     var shortcutModifiers: EventModifiers {
-        self == .notifications ? [.command, .shift] : [.command]
+        switch self {
+        case .notifications, .workflows: [.command, .shift]
+        default: [.command]
+        }
     }
 
     var isBottomGroup: Bool { self == .settings }
@@ -114,13 +124,14 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 struct SidebarView: View {
     @Binding var selection: DashboardSection
     @Binding var isCollapsed: Bool
+    let visibleSections: [DashboardSection]
     @Environment(\.colorScheme) private var colorScheme
 
     private var topSections: [DashboardSection] {
-        DashboardSection.allCases.filter { !$0.isBottomGroup }
+        visibleSections.filter { !$0.isBottomGroup }
     }
     private var bottomSections: [DashboardSection] {
-        DashboardSection.allCases.filter { $0.isBottomGroup }
+        visibleSections.filter { $0.isBottomGroup }
     }
 
     var body: some View {
@@ -237,7 +248,8 @@ struct DashboardView: View {
             if !appState.isSidebarCollapsed {
                 SidebarView(
                     selection: $appState.selectedDashboardSection,
-                    isCollapsed: $appState.isSidebarCollapsed
+                    isCollapsed: $appState.isSidebarCollapsed,
+                    visibleSections: appState.visibleDashboardSections
                 )
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
@@ -247,6 +259,8 @@ struct DashboardView: View {
                 case .home:
                     HomeView()
                         .environmentObject(appState.correctionLogStore)
+                case .workflows:
+                    DeveloperWorkflowsView()
                 case .fileTidy:
                     FileTidyView()
                 case .clipboard:
@@ -302,6 +316,13 @@ struct DashboardView: View {
         }
         .background(Color(NSColor.windowBackgroundColor))
         .animation(.easeInOut(duration: 0.18), value: appState.isSidebarCollapsed)
+        .sheet(isPresented: $appState.showOnboarding) {
+            OnboardingView(
+                selectedGoals: appState.selectedGoals,
+                localOnlyAI: UserDefaults.standard.bool(forKey: AppDefaults.localOnlyAI)
+            )
+            .environmentObject(appState)
+        }
     }
 }
 

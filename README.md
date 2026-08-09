@@ -17,6 +17,7 @@
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
 - **Ask AI** — press `⌃⌥J` for a Quick AI chat panel with source slots for MCP, llm-wiki, and local folder context.
 - **Unified notifications** — connect a remote MCP server and summarize Slack, Gmail, and Google Calendar in one inbox.
+- **Developer workflows** — start-of-day briefing, meeting preparation, safe project cleanup, context sharing, and end-of-day updates.
 - **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
 - **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
 - **Jira workspace** — browse and multi-filter active-sprint tickets, understand status/priority/assignee changes from the notification center and menu bar, and read, post, or edit comments without leaving Tidy.
@@ -25,6 +26,7 @@
 - **Light / Dark / System** appearance, user-selectable from Settings.
 - **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool.
 - API keys stored securely in macOS Keychain.
+- Goal-based onboarding and a Privacy Center with local-only AI controls, storage visibility, and data clearing.
 
 ## Requirements
 
@@ -158,6 +160,7 @@ These integrations should be opt-in, transparent about what data is read, and av
 - Asana task data is fetched on demand and is not persisted locally.
 - Raw MCP tool responses are kept in memory only. Notification summaries are cached locally so the unified inbox survives a restart.
 - Notification summarization sends a bounded portion of MCP tool output to the configured AI provider; select Ollama if that processing must stay local.
+- Local-only AI mode blocks cloud and CLI AI providers before content is sent; Ollama and LanguageTool remain available.
 - Clipboard history is stored locally.
 - Clipboard capture skips common password managers and transient pasteboard content.
 - Selected text is sent only to the grammar provider you configure. Cloud providers receive the selected text for grammar correction.

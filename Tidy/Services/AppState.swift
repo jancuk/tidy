@@ -13,6 +13,9 @@ final class AppState: ObservableObject {
     let asanaService: AsanaService
     let terminalService: TerminalService
     let unifiedNotificationService: UnifiedNotificationService
+    @Published var showOnboarding: Bool
+    @Published private(set) var selectedGoals: Set<TidyGoal>
+    @Published private(set) var credentialRevision = 0
     @Published var selectedDashboardSection: DashboardSection {
         didSet {
             UserDefaults.standard.set(selectedDashboardSection.rawValue, forKey: AppDefaults.dashboardSection)
@@ -33,8 +36,20 @@ final class AppState: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
-        UserDefaults.standard.registerTidyDefaults()
+        let defaults = UserDefaults.standard
+        let hadCompletedLegacyFirstRun = defaults.bool(forKey: AppDefaults.didCompleteFirstRun)
+        let hadOnboardingPreference = defaults.object(forKey: AppDefaults.didCompleteOnboarding) != nil
+        defaults.registerTidyDefaults()
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        if hadCompletedLegacyFirstRun && !hadOnboardingPreference {
+            defaults.set(true, forKey: AppDefaults.didCompleteOnboarding)
+        }
+        let storedGoals = TidyGoal.decode(defaults.string(forKey: AppDefaults.selectedGoals) ?? "")
+        selectedGoals = storedGoals.isEmpty && hadCompletedLegacyFirstRun
+            ? Set(TidyGoal.allCases)
+            : storedGoals
+        showOnboarding = !isRunningTests
+            && !defaults.bool(forKey: AppDefaults.didCompleteOnboarding)
         selectedDashboardSection = isRunningTests
             ? .home
             : DashboardSection(
@@ -89,7 +104,8 @@ final class AppState: ObservableObject {
         suggestionMonitor.start()
         unifiedNotificationService.start()
         registerHotkeys()
-        if !UserDefaults.standard.bool(forKey: AppDefaults.didCompleteFirstRun) {
+        if !showOnboarding,
+           !UserDefaults.standard.bool(forKey: AppDefaults.didCompleteFirstRun) {
             Permissions.requestAccessibilityIfNeeded()
             UserDefaults.standard.set(true, forKey: AppDefaults.didCompleteFirstRun)
         }
@@ -158,9 +174,10 @@ final class AppState: ObservableObject {
         hud.show(.loading("Tidying clipboard..."))
         Task {
             let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
-            let provider = GrammarProviderFactory.provider(for: providerID)
             let start = Date()
             do {
+                try AppPrivacyPolicy.validateAIProvider(providerID)
+                let provider = GrammarProviderFactory.provider(for: providerID)
                 let corrected = try await provider.fixGrammar(text, language: nil)
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
                 NSPasteboard.general.clearContents()
@@ -175,6 +192,7 @@ final class AppState: ObservableObject {
                 hud.show(.success("Clipboard tidied"), autoDismissAfter: 1)
             } catch {
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
+                let provider = GrammarProviderFactory.provider(for: providerID)
                 aiRequestLogStore.append(AIRequestLogEntry(
                     providerName: provider.displayName,
                     requestPreview: String(text.prefix(100)),
@@ -212,5 +230,80 @@ final class AppState: ObservableObject {
 
     var launchAtLoginEnabled: Bool {
         SMAppService.mainApp.status == .enabled
+    }
+
+    var visibleDashboardSections: [DashboardSection] {
+        let alwaysVisible: Set<DashboardSection> = [.home, .settings]
+        guard !selectedGoals.isEmpty else { return DashboardSection.allCases }
+        let goalSections = selectedGoals.reduce(into: alwaysVisible) { result, goal in
+            result.formUnion(goal.dashboardSections)
+        }
+        return DashboardSection.allCases.filter(goalSections.contains)
+    }
+
+    func presentOnboarding() {
+        showOnboarding = true
+    }
+
+    func completeOnboarding(goals: Set<TidyGoal>, localOnlyAI: Bool) {
+        let resolvedGoals = goals.isEmpty ? Set(TidyGoal.allCases) : goals
+        selectedGoals = resolvedGoals
+        let defaults = UserDefaults.standard
+        defaults.set(TidyGoal.encode(resolvedGoals), forKey: AppDefaults.selectedGoals)
+        defaults.set(localOnlyAI, forKey: AppDefaults.localOnlyAI)
+        defaults.set(true, forKey: AppDefaults.didCompleteOnboarding)
+        defaults.set(true, forKey: AppDefaults.didCompleteFirstRun)
+        showOnboarding = false
+        if !visibleDashboardSections.contains(selectedDashboardSection) {
+            selectedDashboardSection = .home
+        }
+        if resolvedGoals.contains(.writing) {
+            Permissions.requestAccessibilityIfNeeded()
+        }
+    }
+
+    func runWorkflow(_ workflow: DeveloperWorkflowID) {
+        switch workflow {
+        case .startDay, .meetingPrep:
+            openUnifiedNotifications()
+            Task { await unifiedNotificationService.refresh() }
+        case .cleanProject:
+            selectedDashboardSection = .fileTidy
+        case .shareContext:
+            openAskAI()
+        case .wrapUp:
+            UserDefaults.standard.set("standup", forKey: AppDefaults.jiraWorkspaceMode)
+            openJira()
+            Task { await refreshJira() }
+        }
+    }
+
+    func clearAllLocalHistory() {
+        clipboardService.clear()
+        correctionLogStore.clear()
+        aiRequestLogStore.clear()
+        unifiedNotificationService.clearCache()
+        FileTidyUndoLogStore().clear()
+    }
+
+    func disconnectAllIntegrations() {
+        KeychainStore.deleteAll()
+        let defaults = UserDefaults.standard
+        [
+            AppDefaults.jiraSiteURL,
+            AppDefaults.jiraEmail,
+            AppDefaults.jiraProjectKey,
+            AppDefaults.jiraAssigneeAccountID,
+            AppDefaults.asanaWorkspaceGID,
+            AppDefaults.mcpServerURL,
+            AppDefaults.slackNotificationChannels
+        ].forEach(defaults.removeObject(forKey:))
+        defaults.set(0.0, forKey: AppDefaults.asanaTokenExpiresAt)
+        defaults.set(false, forKey: AppDefaults.mcpAutoRefreshEnabled)
+        jiraService.configurationDidChange()
+        asanaService.configurationDidChange()
+        unifiedNotificationService.clearCache()
+        unifiedNotificationService.configurationDidChange()
+        credentialRevision += 1
     }
 }

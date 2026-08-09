@@ -18,13 +18,24 @@ enum GrammarProviderError: LocalizedError {
         case .missingAPIKey(let provider):
             return "Add your \(provider) API key in Settings first."
         case .invalidResponse:
-            return "The grammar provider returned an unexpected response."
+            return "The AI provider sent an unexpected response. Your text is unchanged."
         case .httpError(let status, _):
-            return "The grammar provider returned HTTP \(status)."
+            switch status {
+            case 401, 403:
+                return "The AI provider rejected your access. Check the API key in Settings."
+            case 408, 504:
+                return "The AI provider took too long. Your text is unchanged—please try again."
+            case 429:
+                return "The AI provider is busy right now. Your text is unchanged—try again in a moment."
+            case 500...599:
+                return "The AI provider is temporarily unavailable. Your text is unchanged—please try again."
+            default:
+                return "The AI provider returned an error (\(status)). Your text is unchanged."
+            }
         case .emptyCorrection:
-            return "The grammar provider returned an empty correction."
+            return "The AI provider returned no correction. Your text is unchanged—please try again."
         case .responseTruncated(let provider):
-            return "\(provider) used its response limit before returning corrected text. Please try again."
+            return "\(provider) couldn't finish this correction. Your text is unchanged—try a shorter selection."
         }
     }
 }

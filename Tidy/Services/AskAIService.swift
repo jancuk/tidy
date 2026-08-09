@@ -246,6 +246,7 @@ struct AskAIService {
         sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void = { _, _ in }
     ) async throws -> String {
         let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+        try AppPrivacyPolicy.validateAIProvider(providerID)
         let providerName = providerID.displayName
         let start = Date()
 

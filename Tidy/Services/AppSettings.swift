@@ -129,6 +129,9 @@ enum AppDefaults {
     static let slackIncludeGroupMentions = "slackIncludeGroupMentions"
     static let slackNotificationTopicLimit = "slackNotificationTopicLimit"
     static let settingsTab = "settingsTab"
+    static let localOnlyAI = "localOnlyAI"
+    static let didCompleteOnboarding = "didCompleteOnboarding"
+    static let selectedGoals = "selectedGoals"
 }
 
 extension UserDefaults {
@@ -168,7 +171,9 @@ extension UserDefaults {
             AppDefaults.slackNotificationGroups: "@channel, @here, @everyone",
             AppDefaults.slackIncludeGroupMentions: false,
             AppDefaults.slackNotificationTopicLimit: 10,
-            AppDefaults.settingsTab: "General"
+            AppDefaults.settingsTab: "General",
+            AppDefaults.localOnlyAI: false,
+            AppDefaults.selectedGoals: ""
         ])
     }
 }

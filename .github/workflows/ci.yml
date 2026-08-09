@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      - name: Run unit tests
+        run: >-
+          xcodebuild test
+          -project Tidy.xcodeproj
+          -scheme Tidy
+          -destination 'platform=macOS'
+          -only-testing:TidyTests
+          CODE_SIGNING_ALLOWED=NO
+      - name: Build release configuration
+        run: >-
+          xcodebuild build
+          -project Tidy.xcodeproj
+          -scheme Tidy
+          -configuration Release
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
