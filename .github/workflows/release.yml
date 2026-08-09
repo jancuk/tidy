@@ -101,7 +101,10 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple "$RUNNER_TEMP/Tidy.dmg"
-          shasum -a 256 "$RUNNER_TEMP/Tidy.dmg" > "$RUNNER_TEMP/Tidy.dmg.sha256"
+          (
+            cd "$RUNNER_TEMP"
+            LC_ALL=C shasum -a 256 Tidy.dmg > Tidy.dmg.sha256
+          )
 
       - name: Publish GitHub release
         env:
