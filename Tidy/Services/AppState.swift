@@ -173,34 +173,56 @@ final class AppState: ObservableObject {
 
         hud.show(.loading("Tidying clipboard..."))
         Task {
-            let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+            let providerIDs = GrammarCorrectionPipeline.configuredProviderIDs()
             let start = Date()
             do {
-                try AppPrivacyPolicy.validateAIProvider(providerID)
-                let provider = GrammarProviderFactory.provider(for: providerID)
-                let corrected = try await provider.fixGrammar(text, language: nil)
+                let result = try await GrammarCorrectionPipeline.correct(text, providerIDs: providerIDs)
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(corrected, forType: .string)
-                correctionLogStore.append(original: text, corrected: corrected, providerID: providerID.rawValue)
+                NSPasteboard.general.setString(result.correctedText, forType: .string)
+                correctionLogStore.append(original: text, corrected: result.correctedText, providerID: result.providerID)
+                for failure in result.failures {
+                    aiRequestLogStore.append(AIRequestLogEntry(
+                        providerName: failure.providerName,
+                        requestPreview: String(text.prefix(100)),
+                        statusCode: failure.statusCode,
+                        errorMessage: failure.message,
+                        durationMs: failure.durationMs,
+                        source: "grammar-fallback"
+                    ))
+                }
                 aiRequestLogStore.append(AIRequestLogEntry(
-                    providerName: provider.displayName,
+                    providerName: result.providerName,
                     requestPreview: String(text.prefix(100)),
                     durationMs: ms,
                     source: "grammar"
                 ))
-                hud.show(.success("Clipboard tidied"), autoDismissAfter: 1)
+                let message = result.usedFallback ? "Clipboard tidied · \(result.providerName) fallback" : "Clipboard tidied"
+                hud.show(.success(message), autoDismissAfter: 1.5)
             } catch {
                 let ms = Int(Date().timeIntervalSince(start) * 1000)
-                let provider = GrammarProviderFactory.provider(for: providerID)
-                aiRequestLogStore.append(AIRequestLogEntry(
-                    providerName: provider.displayName,
-                    requestPreview: String(text.prefix(100)),
-                    statusCode: httpStatus(from: error),
-                    errorMessage: error.localizedDescription,
-                    durationMs: ms,
-                    source: "grammar"
-                ))
+                if case GrammarCorrectionPipelineError.allProvidersFailed(let failures) = error {
+                    for failure in failures {
+                        aiRequestLogStore.append(AIRequestLogEntry(
+                            providerName: failure.providerName,
+                            requestPreview: String(text.prefix(100)),
+                            statusCode: failure.statusCode,
+                            errorMessage: failure.message,
+                            durationMs: failure.durationMs,
+                            source: "grammar-fallback"
+                        ))
+                    }
+                } else {
+                    let providerName = providerIDs.first?.displayName ?? "Grammar provider"
+                    aiRequestLogStore.append(AIRequestLogEntry(
+                        providerName: providerName,
+                        requestPreview: String(text.prefix(100)),
+                        statusCode: httpStatus(from: error),
+                        errorMessage: error.localizedDescription,
+                        durationMs: ms,
+                        source: "grammar"
+                    ))
+                }
                 hud.show(.error(error.localizedDescription), autoDismissAfter: 2.5)
             }
         }

@@ -43,7 +43,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Keep AI processing local")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Cloud and CLI AI providers will be blocked. Use Ollama or LanguageTool instead.")
+                    Text("Cloud and CLI AI providers will be blocked. Use Ollama instead.")
                         .font(.system(size: 10))
                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 }

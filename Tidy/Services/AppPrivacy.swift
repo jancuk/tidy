@@ -6,7 +6,7 @@ enum AppPrivacyError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .localOnlyProviderRequired:
-            "Local-only AI is enabled. Choose Ollama or LanguageTool in Settings to process content without a cloud AI provider."
+            "Local-only AI is enabled. Choose Ollama in Settings to process content without a cloud provider."
         }
     }
 }
@@ -26,9 +26,9 @@ enum AppPrivacyPolicy {
 extension GrammarProviderID {
     var processesContentLocally: Bool {
         switch self {
-        case .ollama, .languageTool:
+        case .ollama:
             true
-        case .gemini, .openAI, .anthropic, .deepSeek, .openCode, .codexCLI, .claudeCLI:
+        case .gemini, .openAI, .anthropic, .deepSeek, .languageTool, .openCode, .codexCLI, .claudeCLI:
             false
         }
     }

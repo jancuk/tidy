@@ -39,15 +39,21 @@ final class GrammarService: ObservableObject {
                     return
                 }
 
-                if selectedText.count > 2_000 {
-                    hud.show(.warning("Selection is too long"), autoDismissAfter: 1.5)
+                if selectedText.count > GrammarCorrectionPipeline.maximumInputCharacters {
+                    hud.show(.warning("Select up to 100,000 characters"), autoDismissAfter: 2)
                     return
                 }
 
-                let providerID = currentProviderID()
-                try AppPrivacyPolicy.validateAIProvider(providerID)
-                let provider = GrammarProviderFactory.provider(for: providerID)
-                hud.show(.loading("Tidying with \(provider.displayName)…"))
+                let providerIDs = GrammarCorrectionPipeline.configuredProviderIDs()
+                guard let primaryID = providerIDs.first else {
+                    throw AppPrivacyError.localOnlyProviderRequired
+                }
+                let primaryProvider = GrammarProviderFactory.provider(for: primaryID)
+                let chunkCount = GrammarCorrectionPipeline.estimatedChunkCount(for: selectedText)
+                let loadingMessage = chunkCount > 1
+                    ? "Tidying \(chunkCount) sections with \(primaryProvider.displayName)…"
+                    : "Tidying with \(primaryProvider.displayName)…"
+                hud.show(.loading(loadingMessage))
 
                 let progressTask = Task { @MainActor [hud] in
                     try? await Task.sleep(for: .seconds(4))
@@ -56,37 +62,44 @@ final class GrammarService: ObservableObject {
                 }
                 let start = Date()
                 do {
-                    let corrected = try await provider.fixGrammar(selectedText, language: nil)
+                    let result = try await GrammarCorrectionPipeline.correct(selectedText, providerIDs: providerIDs)
                     progressTask.cancel()
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
-                    logStore.append(original: selectedText, corrected: corrected, providerID: providerID.rawValue)
+                    logFailures(result.failures, requestPreview: selectedText)
+                    logStore.append(original: selectedText, corrected: result.correctedText, providerID: result.providerID)
                     requestLogStore.append(AIRequestLogEntry(
-                        providerName: provider.displayName,
+                        providerName: result.providerName,
                         requestPreview: String(selectedText.prefix(100)),
                         durationMs: ms,
                         source: "grammar"
                     ))
 
-                    if corrected == selectedText {
-                        hud.show(.success("Already tidy"), autoDismissAfter: 1)
+                    if result.correctedText == selectedText {
+                        let message = result.usedFallback ? "Already tidy · \(result.providerName) fallback" : "Already tidy"
+                        hud.show(.success(message), autoDismissAfter: 1.4)
                         return
                     }
 
-                    let hudHandled = try await replaceSelection(with: corrected)
+                    let hudHandled = try await replaceSelection(with: result.correctedText)
                     if !hudHandled {
-                        hud.show(.success("Tidied in \(Self.durationDescription(milliseconds: ms))"), autoDismissAfter: 1.2)
+                        let suffix = result.usedFallback ? " · \(result.providerName) fallback" : ""
+                        hud.show(.success("Tidied in \(Self.durationDescription(milliseconds: ms))\(suffix)"), autoDismissAfter: 1.8)
                     }
                 } catch {
                     progressTask.cancel()
                     let ms = Int(Date().timeIntervalSince(start) * 1000)
-                    requestLogStore.append(AIRequestLogEntry(
-                        providerName: provider.displayName,
-                        requestPreview: String(selectedText.prefix(100)),
-                        statusCode: httpStatus(from: error),
-                        errorMessage: error.localizedDescription,
-                        durationMs: ms,
-                        source: "grammar"
-                    ))
+                    if case GrammarCorrectionPipelineError.allProvidersFailed(let failures) = error {
+                        logFailures(failures, requestPreview: selectedText)
+                    } else {
+                        requestLogStore.append(AIRequestLogEntry(
+                            providerName: primaryProvider.displayName,
+                            requestPreview: String(selectedText.prefix(100)),
+                            statusCode: httpStatus(from: error),
+                            errorMessage: error.localizedDescription,
+                            durationMs: ms,
+                            source: "grammar"
+                        ))
+                    }
                     throw error
                 }
             } catch {
@@ -122,9 +135,17 @@ final class GrammarService: ObservableObject {
         return nil
     }
 
-    private func currentProviderID() -> GrammarProviderID {
-        let rawValue = UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? GrammarProviderID.gemini.rawValue
-        return GrammarProviderID(rawValue: rawValue) ?? .gemini
+    private func logFailures(_ failures: [GrammarProviderAttemptFailure], requestPreview: String) {
+        for failure in failures {
+            requestLogStore.append(AIRequestLogEntry(
+                providerName: failure.providerName,
+                requestPreview: String(requestPreview.prefix(100)),
+                statusCode: failure.statusCode,
+                errorMessage: failure.message,
+                durationMs: failure.durationMs,
+                source: "grammar-fallback"
+            ))
+        }
     }
 
     // Bundle IDs of terminal emulators that don't support "replace selected text" via Cmd+V.

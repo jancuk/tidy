@@ -4,6 +4,8 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var correctionLogStore: CorrectionLogStore
     @AppStorage(AppDefaults.grammarProvider)     private var grammarProvider    = GrammarProviderID.gemini.rawValue
+    @AppStorage(AppDefaults.grammarFallbackProvider1) private var grammarFallbackProvider1 = GrammarCorrectionPipeline.noFallbackValue
+    @AppStorage(AppDefaults.grammarFallbackProvider2) private var grammarFallbackProvider2 = GrammarCorrectionPipeline.noFallbackValue
     @AppStorage(AppDefaults.grammarHotkey)       private var grammarHotkey      = Hotkey.grammarDefault.displayValue
     @AppStorage(AppDefaults.clipboardHotkey)     private var clipboardHotkey    = Hotkey.clipboardDefault.displayValue
     @AppStorage(AppDefaults.askAIHotkey)         private var askAIHotkey        = Hotkey.askAIDefault.displayValue
@@ -284,7 +286,19 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+
+                    Divider().opacity(0.5)
+
+                    fallbackProviderRow(label: "Fallback 1", selection: $grammarFallbackProvider1)
+
+                    Divider().opacity(0.5)
+
+                    fallbackProviderRow(label: "Fallback 2", selection: $grammarFallbackProvider2)
                 }
+
+                Text("If a provider times out, reaches its response limit, or returns an unsafe result, Tidy retries the entire correction with the next configured provider. Duplicate providers are skipped.")
+                    .font(.footnote)
+                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
             }
 
             settingsSection(title: "API Keys") {
@@ -1117,6 +1131,26 @@ struct SettingsView: View {
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .onChange(of: isOn.wrappedValue) { _, v in onChange?(v) }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func fallbackProviderRow(label: String, selection: Binding<String>) -> some View {
+        HStack {
+            Label(label, systemImage: "arrow.triangle.branch")
+                .font(.system(size: 13))
+                .foregroundStyle(Color(NSColor.labelColor))
+            Spacer()
+            Picker("", selection: selection) {
+                Text("None").tag(GrammarCorrectionPipeline.noFallbackValue)
+                ForEach(GrammarProviderID.allCases) { provider in
+                    Text(provider.displayName).tag(provider.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 170)
+            .labelsHidden()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

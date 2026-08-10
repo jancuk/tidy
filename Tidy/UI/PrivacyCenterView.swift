@@ -19,7 +19,7 @@ struct PrivacyCenterView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Local-only AI")
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("When enabled, Tidy blocks cloud and CLI AI providers. Ollama and LanguageTool remain available. Connected work services are contacted only when you explicitly use them or enable refresh.")
+                            Text("When enabled, Tidy blocks cloud and CLI AI providers. Ollama remains available. Connected work services are contacted only when you explicitly use them or enable refresh.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
                                 .fixedSize(horizontal: false, vertical: true)

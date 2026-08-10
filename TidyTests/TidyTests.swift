@@ -671,7 +671,7 @@ struct TidyTests {
 
     @Test func privacyPolicyIdentifiesOnlyOnDeviceProvidersAsLocal() {
         #expect(GrammarProviderID.ollama.processesContentLocally)
-        #expect(GrammarProviderID.languageTool.processesContentLocally)
+        #expect(!GrammarProviderID.languageTool.processesContentLocally)
         #expect(!GrammarProviderID.openAI.processesContentLocally)
         #expect(!GrammarProviderID.codexCLI.processesContentLocally)
     }
@@ -1565,7 +1565,7 @@ struct TidyTests {
         #expect(provider.displayName == "DeepSeek")
     }
 
-    @Test func deepSeekRequestMatchesAnthropicCompatibleAPI() throws {
+    @Test func deepSeekRequestUsesNonThinkingChatCompletionAPI() throws {
         let request = try DeepSeekProvider.makeRequest(
             text: "Reply with exactly: pong",
             apiKey: "sk-key",
@@ -1575,31 +1575,32 @@ struct TidyTests {
         let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let messages = try #require(body["messages"] as? [[String: Any]])
 
-        #expect(request.url?.absoluteString == "https://api.deepseek.com/anthropic/messages")
+        #expect(request.url?.absoluteString == "https://api.deepseek.com/chat/completions")
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-key")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
         #expect(body["model"] as? String == "deepseek-v4-flash")
-        #expect(body["max_tokens"] as? Int == 1_024)
+        #expect(body["max_tokens"] as? Int == 8_192)
         #expect((body["thinking"] as? [String: Any])?["type"] as? String == "disabled")
-        #expect(messages.first?["role"] as? String == "user")
-        #expect((messages.first?["content"] as? String)?.contains("Reply with exactly: pong") == true)
+        #expect(messages.first?["role"] as? String == "system")
+        #expect(messages.last?["role"] as? String == "user")
+        #expect((messages.last?["content"] as? String)?.contains("Reply with exactly: pong") == true)
     }
 
     @Test func deepSeekRetryDoublesTheOutputBudgetWithinLimit() {
-        #expect(DeepSeekProvider.retryMaxTokens(after: 1_024) == 2_048)
         #expect(DeepSeekProvider.retryMaxTokens(after: 8_192) == 16_384)
-        #expect(DeepSeekProvider.retryMaxTokens(after: 16_384) == 16_384)
+        #expect(DeepSeekProvider.retryMaxTokens(after: 32_768) == 65_536)
+        #expect(DeepSeekProvider.retryMaxTokens(after: 65_536) == 65_536)
     }
 
-    @Test func deepSeekResponseSkipsThinkingAndReturnsText() throws {
-        let data = Data(#"{"content":[{"type":"thinking","thinking":"Reasoning"},{"type":"text","text":"Corrected text"}],"stop_reason":"end_turn"}"#.utf8)
+    @Test func deepSeekResponseReturnsFinalContent() throws {
+        let data = Data(#"{"choices":[{"message":{"content":"Corrected text","reasoning_content":"Reasoning"},"finish_reason":"stop"}]}"#.utf8)
 
         #expect(try DeepSeekProvider.correctedText(from: data) == "Corrected text")
     }
 
     @Test func deepSeekResponseReportsReasoningTruncation() {
-        let data = Data(#"{"content":[{"type":"thinking","thinking":"Reasoning only"}],"stop_reason":"max_tokens"}"#.utf8)
+        let data = Data(#"{"choices":[{"message":{"content":null,"reasoning_content":"Reasoning only"},"finish_reason":"length"}]}"#.utf8)
 
         #expect(throws: GrammarProviderError.self) {
             try DeepSeekProvider.correctedText(from: data)
@@ -1607,10 +1608,67 @@ struct TidyTests {
     }
 
     @Test func deepSeekNeverReturnsPartialCorrectedText() {
-        let data = Data(#"{"content":[{"type":"text","text":"A partial correction"}],"stop_reason":"max_tokens"}"#.utf8)
+        let data = Data(#"{"choices":[{"message":{"content":"A partial correction"},"finish_reason":"length"}]}"#.utf8)
 
         #expect(throws: GrammarProviderError.self) {
             try DeepSeekProvider.correctedText(from: data)
+        }
+    }
+
+    @Test func grammarPipelineFallsBackAfterProviderFailure() async throws {
+        let primary = StubGrammarProvider(
+            id: GrammarProviderID.deepSeek.rawValue,
+            displayName: "DeepSeek",
+            behavior: .fail
+        )
+        let fallback = StubGrammarProvider(
+            id: GrammarProviderID.openAI.rawValue,
+            displayName: "OpenAI",
+            behavior: .uppercase
+        )
+
+        let result = try await GrammarCorrectionPipeline.correct(
+            "this is a test",
+            providers: [primary, fallback]
+        )
+
+        #expect(result.correctedText == "THIS IS A TEST")
+        #expect(result.providerID == GrammarProviderID.openAI.rawValue)
+        #expect(result.usedFallback)
+        #expect(result.failures.map(\.providerName) == ["DeepSeek"])
+    }
+
+    @Test func grammarPipelineChunksLongSelectionsAndPreservesWhitespace() async throws {
+        let provider = StubGrammarProvider(
+            id: GrammarProviderID.deepSeek.rawValue,
+            displayName: "DeepSeek",
+            behavior: .uppercase
+        )
+        let text = "  " + String(repeating: "sentence with words. ", count: 30) + "\n\n" + String(repeating: "another line. ", count: 30) + "  "
+
+        let result = try await GrammarCorrectionPipeline.correct(
+            text,
+            providers: [provider],
+            chunkCharacters: 200
+        )
+
+        #expect(result.chunkCount > 1)
+        #expect(result.correctedText == text.uppercased())
+    }
+
+    @Test func grammarPipelineReportsAllAttemptedProvidersWhenFallbacksFail() async {
+        let providers = [
+            StubGrammarProvider(id: GrammarProviderID.deepSeek.rawValue, displayName: "DeepSeek", behavior: .fail),
+            StubGrammarProvider(id: GrammarProviderID.openAI.rawValue, displayName: "OpenAI", behavior: .fail),
+            StubGrammarProvider(id: GrammarProviderID.ollama.rawValue, displayName: "Ollama", behavior: .fail),
+        ]
+
+        do {
+            _ = try await GrammarCorrectionPipeline.correct("test", providers: providers)
+            Issue.record("Expected all providers to fail")
+        } catch {
+            #expect(error.localizedDescription.contains("DeepSeek, OpenAI, Ollama"))
+            #expect(error.localizedDescription.contains("text is unchanged"))
         }
     }
 
@@ -1624,6 +1682,26 @@ struct TidyTests {
         let message = GrammarService.userFacingMessage(for: URLError(.timedOut))
         #expect(message.contains("longer than usual"))
         #expect(message.contains("text is unchanged"))
+    }
+
+    private struct StubGrammarProvider: GrammarProvider {
+        enum Behavior {
+            case fail
+            case uppercase
+        }
+
+        let id: String
+        let displayName: String
+        let behavior: Behavior
+
+        func fixGrammar(_ text: String, language: String?) async throws -> String {
+            switch behavior {
+            case .fail:
+                throw GrammarProviderError.responseTruncated(displayName)
+            case .uppercase:
+                return text.uppercased()
+            }
+        }
     }
 
     private func makeTemporaryFolder() throws -> URL {

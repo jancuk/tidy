@@ -111,10 +111,8 @@ final class SuggestionMonitor: ObservableObject {
         Task {
             defer { inflight = false }
             do {
-                let providerID = currentProviderID()
-                try AppPrivacyPolicy.validateAIProvider(providerID)
-                let provider = GrammarProviderFactory.provider(for: providerID)
-                let corrected = try await provider.fixGrammar(text, language: nil)
+                let result = try await GrammarCorrectionPipeline.correct(text)
+                let corrected = result.correctedText
                 let cleanedCorrected = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
                 let cleanedOriginal = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !cleanedCorrected.isEmpty, cleanedCorrected != cleanedOriginal else { return }
@@ -143,11 +141,6 @@ final class SuggestionMonitor: ObservableObject {
         if abs(newLen - origLen) < 30 { return true }
         let ratio = Double(newLen) / Double(max(origLen, 1))
         return ratio >= 0.4 && ratio <= 2.5
-    }
-
-    private func currentProviderID() -> GrammarProviderID {
-        let raw = UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? GrammarProviderID.gemini.rawValue
-        return GrammarProviderID(rawValue: raw) ?? .gemini
     }
 
     private func readFocusedText() -> (String, CGRect?)? {

@@ -45,9 +45,9 @@ struct DeepSeekProvider: GrammarProvider {
         model: String,
         maxTokens: Int? = nil
     ) throws -> URLRequest {
-        var request = URLRequest(url: URL(string: "https://api.deepseek.com/anthropic/messages")!)
+        var request = URLRequest(url: URL(string: "https://api.deepseek.com/chat/completions")!)
         request.httpMethod = "POST"
-        request.timeoutInterval = 15
+        request.timeoutInterval = 45
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(DeepSeekRequest(
@@ -55,29 +55,33 @@ struct DeepSeekProvider: GrammarProvider {
             maxTokens: maxTokens ?? Self.maxTokens(for: text),
             temperature: 0,
             thinking: .init(type: "disabled"),
-            system: GrammarProviderFactory.prompt,
-            messages: [.init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text))]
+            messages: [
+                .init(role: "system", content: GrammarProviderFactory.prompt),
+                .init(role: "user", content: GrammarProviderFactory.inputPrompt(for: text)),
+            ]
         ))
         return request
     }
 
     static func maxTokens(for text: String) -> Int {
-        max(1_024, min(8_192, text.count * 2 + 512))
+        max(8_192, min(32_768, text.count * 2 + 2_048))
     }
 
     static func retryMaxTokens(after initialBudget: Int) -> Int {
-        min(16_384, max(initialBudget + 1_024, initialBudget * 2))
+        min(65_536, max(initialBudget + 8_192, initialBudget * 2))
     }
 
     static func correctedText(from data: Data) throws -> String {
         let decoded = try JSONDecoder().decode(DeepSeekResponse.self, from: data)
-        guard decoded.stopReason != "max_tokens" else {
+        guard let choice = decoded.choices.first else {
+            throw GrammarProviderError.invalidResponse
+        }
+        let wasTruncated = choice.finishReason.map { ["length", "max_tokens"].contains($0) } ?? false
+        guard !wasTruncated else {
             throw GrammarProviderError.responseTruncated(GrammarProviderID.deepSeek.displayName)
         }
 
-        let corrected = decoded.content
-            .compactMap(\.text)
-            .joined()
+        let corrected = (choice.message.content ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !corrected.isEmpty else {
             throw GrammarProviderError.emptyCorrection
@@ -97,7 +101,6 @@ private struct DeepSeekRequest: Encodable {
     let maxTokens: Int
     let temperature: Double
     let thinking: Thinking
-    let system: String
     let messages: [Message]
 
     enum CodingKeys: String, CodingKey {
@@ -105,7 +108,6 @@ private struct DeepSeekRequest: Encodable {
         case maxTokens = "max_tokens"
         case temperature
         case thinking
-        case system
         case messages
     }
 
@@ -120,16 +122,20 @@ private struct DeepSeekRequest: Encodable {
 }
 
 private struct DeepSeekResponse: Decodable {
-    let content: [Content]
-    let stopReason: String?
+    let choices: [Choice]
 
-    enum CodingKeys: String, CodingKey {
-        case content
-        case stopReason = "stop_reason"
+    struct Choice: Decodable {
+        let message: Message
+        let finishReason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case message
+            case finishReason = "finish_reason"
+        }
     }
 
-    struct Content: Decodable {
-        let text: String?
+    struct Message: Decodable {
+        let content: String?
     }
 }
 

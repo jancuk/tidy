@@ -1,6 +1,6 @@
 import Foundation
 
-protocol GrammarProvider {
+protocol GrammarProvider: Sendable {
     var id: String { get }
     var displayName: String { get }
     func fixGrammar(_ text: String, language: String?) async throws -> String

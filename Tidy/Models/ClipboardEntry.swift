@@ -64,7 +64,7 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
 
     var requiresAPIKey: Bool {
         switch self {
-        case .ollama, .codexCLI, .claudeCLI:
+        case .languageTool, .ollama, .codexCLI, .claudeCLI:
             false
         default:
             true

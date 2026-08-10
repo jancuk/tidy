@@ -97,6 +97,8 @@ enum AppDefaults {
     static let clipboardHotkey = "clipboardHotkey"
     static let askAIHotkey = "askAIHotkey"
     static let grammarProvider = "grammarProvider"
+    static let grammarFallbackProvider1 = "grammarFallbackProvider1"
+    static let grammarFallbackProvider2 = "grammarFallbackProvider2"
     static let clipboardMaxEntries = "clipboardMaxEntries"
     static let clipboardMaxAgeDays = "clipboardMaxAgeDays"
     static let didCompleteFirstRun = "didCompleteFirstRun"
@@ -141,6 +143,8 @@ extension UserDefaults {
             AppDefaults.clipboardHotkey: Hotkey.clipboardDefault.displayValue,
             AppDefaults.askAIHotkey: Hotkey.askAIDefault.displayValue,
             AppDefaults.grammarProvider: GrammarProviderID.gemini.rawValue,
+            AppDefaults.grammarFallbackProvider1: GrammarCorrectionPipeline.noFallbackValue,
+            AppDefaults.grammarFallbackProvider2: GrammarCorrectionPipeline.noFallbackValue,
             AppDefaults.clipboardMaxEntries: 200,
             AppDefaults.clipboardMaxAgeDays: 7,
             AppDefaults.didCompleteFirstRun: false,
