@@ -5,7 +5,15 @@
 <h1 align="center">Tidy</h1>
 
 <p align="center">
-  The productivity layer your Mac deserves — AI-powered, keyboard-first, clutter-free.
+  Fix selected text anywhere on your Mac with one shortcut — privately, with local AI or your own provider.
+</p>
+
+<p align="center">
+  <a href="https://github.com/jancuk/tidy/releases/latest/download/Tidy.dmg"><strong>Download Tidy 1.0</strong></a>
+  ·
+  <a href="#privacy-and-security">Privacy</a>
+  ·
+  <a href="#build-from-source">Build from source</a>
 </p>
 
 <p align="center">
@@ -30,21 +38,30 @@
 
 ## Requirements
 
-- macOS 15.3 or newer.
-- Xcode 16 or newer.
+- An Apple silicon Mac running macOS 15.3 or newer.
 - Accessibility permission for reading and replacing selected text.
 - Network access for cloud grammar providers. Ollama and LanguageTool can be used locally depending on your configuration.
 
 ## Getting started
 
-### 1. Clone
+### Install the app
+
+1. Download the latest [`Tidy.dmg`](https://github.com/jancuk/tidy/releases/latest/download/Tidy.dmg).
+2. Open the disk image and drag **Tidy** to **Applications**.
+3. Launch Tidy and grant Accessibility permission when prompted.
+
+### Build from source
+
+Building Tidy yourself requires Xcode 16 or newer.
+
+#### 1. Clone
 
 ```sh
 git clone https://github.com/jancuk/tidy.git
 cd Tidy
 ```
 
-### 2. Set your Team ID
+#### 2. Set your Team ID
 
 Create a `Local.xcconfig` file in the repo root (it is gitignored):
 
@@ -55,7 +72,7 @@ DEVELOPMENT_TEAM = YOUR_TEAM_ID
 Find your Team ID at [developer.apple.com/account](https://developer.apple.com/account) → Membership Details.  
 If you just want to run it without code signing, leave it blank — Xcode will prompt you to choose a team on first build.
 
-### 3. Build and run
+#### 3. Build and run
 
 Open `Tidy.xcodeproj` in Xcode, select the **Tidy** scheme with **My Mac** as destination, and press `⌘R`.
 
@@ -71,7 +88,7 @@ Run unit tests:
 xcodebuild test -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' -only-testing:TidyTests
 ```
 
-### 4. Add an API key
+### Add an API key
 
 Open Settings (gear icon in the sidebar) → **Grammar** tab → paste your API key and click **Save API Keys**.
 
@@ -85,23 +102,23 @@ Open Settings (gear icon in the sidebar) → **Grammar** tab → paste your API 
 
 Gemini also checks the `GEMINI_API_KEY` environment variable before falling back to the saved Keychain value.
 
-### 5. Grant Accessibility permission
+### Grant Accessibility permission
 
 Tidy needs Accessibility access to read selected text and paste the corrected version back. macOS will prompt on first use, or go to **System Settings → Privacy & Security → Accessibility**.
 
-### 6. Connect Jira Cloud
+### Connect Jira Cloud
 
 Open **Settings → Jira**, enter your `https://company.atlassian.net` site URL, Atlassian account email, and an API token, then click **Test Connection**. Open **Jira** from the sidebar, enter a project key, and choose **Use Me** to filter the active sprint to your assigned tickets.
 
 The Jira API token is stored in macOS Keychain. Tidy uses Jira Cloud's REST API directly and does not persist ticket content locally.
 
-### 7. Connect Asana
+### Connect Asana
 
 Create an OAuth API app in the Asana developer console, mark it as a native or command-line app, add the redirect URI `urn:ietf:wg:oauth:2.0:oob`, and register these permission scopes: `tasks:read`, `tasks:write`, and `workspaces:read`. Open **Settings → Asana**, enter the app's **Client ID** and **Client Secret**, then click **Connect with Asana**. Approve access in the browser, paste the authorization code into Tidy, and complete the connection. Choose a workspace and open **Asana** from the sidebar to load your assigned, incomplete tasks.
 
 The app credentials, access token, and refresh token are stored in macOS Keychain. Tidy talks directly to Asana's official API, refreshes expired access tokens automatically, and keeps task content in memory only for the current app session.
 
-### 8. Connect an MCP server
+### Connect an MCP server
 
 Open **Settings → MCP** and enter:
 

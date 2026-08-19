@@ -5,8 +5,17 @@ semantic versioning and keeps unreleased work at the top.
 
 ## Unreleased
 
+No user-facing changes yet.
+
+## 1.0.0 - 2026-08-19
+
 ### Added
 
+- Initial public release of Tidy for Apple silicon Macs running macOS 15.3 or newer.
+- Keyboard-first grammar correction in any app, with cloud and local AI providers.
+- Searchable local clipboard history and the quick-access clipboard palette.
+- Preview-first file organization with duplicate detection and undo support.
+- Local developer tools for JSON, JWT, diffs, Unix time, CSV/JSON, and cron expressions.
 - Automated macOS CI for unit tests and release builds.
 - Signed, notarized GitHub release workflow with DMG packaging.
 - Daily engineering briefing across configured notification sources.

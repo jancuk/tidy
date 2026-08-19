@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Sign, notarize, and publish
@@ -29,6 +33,7 @@ jobs:
 
       - name: Verify release secrets
         run: |
+          set -euo pipefail
           required=(
             APPLE_TEAM_ID APPLE_ID APPLE_APP_PASSWORD
             DEVELOPER_ID_CERTIFICATE DEVELOPER_ID_CERTIFICATE_PASSWORD
@@ -41,8 +46,26 @@ jobs:
             fi
           done
 
+      - name: Verify tag matches app version
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          app_version="$(
+            xcodebuild \
+              -project Tidy.xcodeproj \
+              -target Tidy \
+              -configuration Release \
+              -showBuildSettings \
+              | awk -F' = ' '/MARKETING_VERSION =/ { print $2; exit }'
+          )"
+          if [[ "$tag_version" != "$app_version" ]]; then
+            echo "Tag version $tag_version does not match app version $app_version." >&2
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
         run: |
+          set -euo pipefail
           certificate_path="$RUNNER_TEMP/developer-id.p12"
           keychain_path="$RUNNER_TEMP/tidy-signing.keychain-db"
           printf '%s' "$DEVELOPER_ID_CERTIFICATE" | base64 --decode > "$certificate_path"
@@ -55,6 +78,7 @@ jobs:
 
       - name: Build archive
         run: |
+          set -euo pipefail
           identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
           if [[ -z "$identity" ]]; then
             echo "Developer ID Application identity was not imported." >&2
@@ -71,20 +95,32 @@ jobs:
 
       - name: Package application
         run: |
+          set -euo pipefail
           app="$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app"
+          architectures="$(lipo -archs "$app/Contents/MacOS/Tidy")"
+          if [[ "$architectures" != "arm64" ]]; then
+            echo "Unexpected release architectures: $architectures" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app"
           ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Tidy.zip"
 
       - name: Notarize and staple
         run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app"
           xcrun notarytool submit "$RUNNER_TEMP/Tidy.zip" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
-          xcrun stapler staple "$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app"
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app"
 
       - name: Create DMG
         run: |
+          set -euo pipefail
           staging="$RUNNER_TEMP/dmg"
           mkdir -p "$staging"
           ditto "$RUNNER_TEMP/Tidy.xcarchive/Products/Applications/Tidy.app" "$staging/Tidy.app"
@@ -95,12 +131,16 @@ jobs:
             -ov \
             -format UDZO \
             "$RUNNER_TEMP/Tidy.dmg"
+          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
+          codesign --force --timestamp --sign "$identity" "$RUNNER_TEMP/Tidy.dmg"
           xcrun notarytool submit "$RUNNER_TEMP/Tidy.dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple "$RUNNER_TEMP/Tidy.dmg"
+          xcrun stapler validate "$RUNNER_TEMP/Tidy.dmg"
+          hdiutil verify "$RUNNER_TEMP/Tidy.dmg"
           (
             cd "$RUNNER_TEMP"
             LC_ALL=C shasum -a 256 Tidy.dmg > Tidy.dmg.sha256
