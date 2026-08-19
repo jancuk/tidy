@@ -56,7 +56,7 @@ jobs:
               -target Tidy \
               -configuration Release \
               -showBuildSettings \
-              | awk -F' = ' '/MARKETING_VERSION =/ { print $2; exit }'
+              | awk -F' = ' '/MARKETING_VERSION =/ && !found { print $2; found=1 }'
           )"
           if [[ "$tag_version" != "$app_version" ]]; then
             echo "Tag version $tag_version does not match app version $app_version." >&2
@@ -79,7 +79,7 @@ jobs:
       - name: Build archive
         run: |
           set -euo pipefail
-          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
+          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ && !found { print $2; found=1 }')"
           if [[ -z "$identity" ]]; then
             echo "Developer ID Application identity was not imported." >&2
             exit 1
@@ -131,7 +131,7 @@ jobs:
             -ov \
             -format UDZO \
             "$RUNNER_TEMP/Tidy.dmg"
-          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ { print $2; exit }')"
+          identity="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application:/ && !found { print $2; found=1 }')"
           codesign --force --timestamp --sign "$identity" "$RUNNER_TEMP/Tidy.dmg"
           xcrun notarytool submit "$RUNNER_TEMP/Tidy.dmg" \
             --apple-id "$APPLE_ID" \
