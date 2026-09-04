@@ -7,6 +7,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     case workflows
     case fileTidy
     case clipboard
+    case data
     case terminal
     case developerTools
     case correctionLog
@@ -24,6 +25,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .workflows:      "Workflows"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard"
+        case .data:           "Tidy Data"
         case .terminal:       "Terminal"
         case .developerTools: "Dev Tools"
         case .correctionLog:  "Corrections"
@@ -41,6 +43,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .workflows:      "Developer Workflows"
         case .fileTidy:       "File Tidy"
         case .clipboard:      "Clipboard History"
+        case .data:           "Tidy Data Workspace"
         case .terminal:       "Terminal"
         case .developerTools: "Developer Tools"
         case .correctionLog:  "Correction Log"
@@ -58,6 +61,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard"
+        case .data:           "tablecells"
         case .terminal:       "terminal"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle"
@@ -75,6 +79,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
         case .clipboard:      "doc.on.clipboard.fill"
+        case .data:           "tablecells.fill"
         case .terminal:       "terminal.fill"
         case .developerTools: "chevron.left.forwardslash.chevron.right"
         case .correctionLog:  "checkmark.rectangle.fill"
@@ -92,6 +97,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
         case .workflows:      "w"
         case .fileTidy:       "2"
         case .clipboard:      "3"
+        case .data:           "d"
         case .terminal:       "4"
         case .developerTools: "5"
         case .correctionLog:  "6"
@@ -106,12 +112,13 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     var shortcutLabel: String {
         if self == .notifications { return "⌘⇧N" }
         if self == .workflows { return "⌘⇧W" }
+        if self == .data { return "⌘⇧D" }
         return "⌘\(shortcutDigit)"
     }
 
     var shortcutModifiers: EventModifiers {
         switch self {
-        case .notifications, .workflows: [.command, .shift]
+        case .notifications, .workflows, .data: [.command, .shift]
         default: [.command]
         }
     }
@@ -266,6 +273,9 @@ struct DashboardView: View {
                 case .clipboard:
                     ClipboardListView()
                         .environmentObject(appState.clipboardService)
+                case .data:
+                    DataWorkspaceView()
+                        .environmentObject(appState.dataWorkspaceService)
                 case .terminal:
                     TerminalView(isSidebarCollapsed: $appState.isSidebarCollapsed)
                         .environmentObject(appState.terminalService)

@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     let clipboardService: ClipboardService
     let correctionLogStore: CorrectionLogStore
     let aiRequestLogStore: AIRequestLogStore
+    let dataWorkspaceService: DataWorkspaceService
     let suggestionMonitor: SuggestionMonitor
     let jiraService: JiraService
     let asanaService: AsanaService
@@ -59,6 +60,7 @@ final class AppState: ObservableObject {
         clipboardService = ClipboardService()
         correctionLogStore = CorrectionLogStore()
         aiRequestLogStore = AIRequestLogStore()
+        dataWorkspaceService = DataWorkspaceService(logStore: aiRequestLogStore)
         grammarService = GrammarService(hud: hud, logStore: correctionLogStore, requestLogStore: aiRequestLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
         askAIController = AskAIController(requestLogStore: aiRequestLogStore)
@@ -255,7 +257,7 @@ final class AppState: ObservableObject {
     }
 
     var visibleDashboardSections: [DashboardSection] {
-        let alwaysVisible: Set<DashboardSection> = [.home, .settings]
+        let alwaysVisible: Set<DashboardSection> = [.home, .data, .settings]
         guard !selectedGoals.isEmpty else { return DashboardSection.allCases }
         let goalSections = selectedGoals.reduce(into: alwaysVisible) { result, goal in
             result.formUnion(goal.dashboardSections)

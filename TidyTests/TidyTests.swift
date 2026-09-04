@@ -652,7 +652,7 @@ struct TidyTests {
     }
 
     @Test func dashboardSectionShortcutsFollowSidebarOrder() {
-        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1w234567n890"))
+        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1w23d4567n890"))
         #expect(DashboardSection.notifications.shortcutLabel == "⌘⇧N")
         #expect(DashboardSection.asana.shortcutLabel == "⌘9")
         #expect(DashboardSection.settings.shortcutLabel == "⌘0")
@@ -1684,6 +1684,97 @@ struct TidyTests {
         #expect(message.contains("text is unchanged"))
     }
 
+    @Test func dataQuerySafetyAllowsImportedTablesAndBlocksFileReads() throws {
+        let allowed = try DataQueryBuilder.validateReadOnlySQL(
+            "SELECT \"region\", SUM(\"amount\") FROM \"orders\" GROUP BY \"region\";",
+            allowedTables: ["orders"]
+        )
+        #expect(allowed.hasSuffix(";") == false)
+
+        do {
+            _ = try DataQueryBuilder.validateReadOnlySQL(
+                "SELECT * FROM read_csv('/tmp/private.csv')",
+                allowedTables: ["orders"]
+            )
+            Issue.record("Expected file-reading SQL to be rejected")
+        } catch let error as DataWorkspaceError {
+            guard case .unsafeQuery = error else {
+                Issue.record("Expected an unsafe-query error")
+                return
+            }
+        }
+
+        #expect(throws: DataWorkspaceError.self) {
+            try DataQueryBuilder.validateReadOnlySQL(
+                "SELECT read_blob('/tmp/private.bin'), * FROM \"orders\"",
+                allowedTables: ["orders"]
+            )
+        }
+        #expect(
+            DataWorkspaceError.needsMultipleSources(.combine).localizedDescription ==
+                "Combine needs at least two CSV files."
+        )
+        #expect(
+            DataWorkspaceError.unsafeQuery("file access").localizedDescription ==
+                "Tidy blocked the generated query: file access"
+        )
+    }
+
+    @Test func dataQueryBuilderCreatesCombineAndComparePlans() throws {
+        let first = dataSource(
+            tableName: "january",
+            displayName: "january.csv",
+            columns: ["id", "region", "amount"]
+        )
+        let second = dataSource(
+            tableName: "february",
+            displayName: "february.csv",
+            columns: ["ID", "region", "amount"]
+        )
+
+        let combine = try DataQueryBuilder.combine([first, second])
+        let compare = try DataQueryBuilder.compare(left: first, right: second, key: "id")
+
+        #expect(combine.contains("UNION ALL BY NAME"))
+        #expect(combine.contains("_tidy_source"))
+        #expect(compare.contains("FULL OUTER JOIN"))
+        #expect(compare.contains("_tidy_status"))
+        #expect(compare.contains("r.\"ID\""))
+        #expect(DataQueryBuilder.suggestedComparisonKey(for: [first, second]) == "id")
+    }
+
+    @Test func dataAIPlanParserAcceptsFencedProviderOutput() throws {
+        let response = """
+        ```json
+        {"title":"Revenue","summary":"Totals by region","sql":"SELECT * FROM \\"orders\\"","steps":["Group rows"]}
+        ```
+        """
+        let data = try #require(DataAIService.jsonData(from: response))
+        let plan = try JSONDecoder().decode(DataAIPlan.self, from: data)
+
+        #expect(plan.title == "Revenue")
+        #expect(plan.sql == "SELECT * FROM \"orders\"")
+    }
+
+    @Test func duckDBEngineImportsAndAggregatesCSV() async throws {
+        let folder = try makeTemporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let csv = folder.appendingPathComponent("orders.csv")
+        try write("id,region,amount\n1,North,10\n2,South,15\n3,North,25\n", to: csv)
+
+        let engine = DuckDBDataEngine()
+        let source = try await engine.registerCSV(csv, id: UUID(), tableName: "orders")
+        let result = try await engine.query(
+            "SELECT \"region\", SUM(\"amount\") AS \"total\" FROM \"orders\" GROUP BY \"region\" ORDER BY \"region\"",
+            limit: 20
+        )
+
+        #expect(source.rowCount == 3)
+        #expect(source.columns.map(\.name) == ["id", "region", "amount"])
+        #expect(result.columns == ["region", "total"])
+        #expect(result.rows == [["North", "35"], ["South", "15"]])
+    }
+
     private struct StubGrammarProvider: GrammarProvider {
         enum Behavior {
             case fail
@@ -1713,6 +1804,22 @@ struct TidyTests {
 
     private func write(_ string: String, to url: URL) throws {
         try Data(string.utf8).write(to: url)
+    }
+
+    private func dataSource(
+        tableName: String,
+        displayName: String,
+        columns: [String]
+    ) -> DataSource {
+        DataSource(
+            id: UUID(),
+            url: URL(fileURLWithPath: "/tmp/\(displayName)"),
+            tableName: tableName,
+            displayName: displayName,
+            rowCount: 3,
+            columns: columns.map { DataColumn(name: $0, type: "VARCHAR") },
+            byteCount: 100
+        )
     }
 
     private func asanaTask(gid: String, name: String, dueOn: String?) throws -> AsanaTask {

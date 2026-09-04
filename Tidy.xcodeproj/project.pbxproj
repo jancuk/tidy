@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		7C47A00130A0000100A10001 /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C47A00230A0000100A10001 /* GhosttyKit.xcframework */; };
+		7C47D00130B0000100D10001 /* DuckDB in Frameworks */ = {isa = PBXBuildFile; productRef = 7C47D00330B0000100D10001 /* DuckDB */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7C47D00130B0000100D10001 /* DuckDB in Frameworks */,
 				7C47A00130A0000100A10001 /* GhosttyKit.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -127,6 +129,7 @@
 			);
 			name = Tidy;
 			packageProductDependencies = (
+				7C47D00330B0000100D10001 /* DuckDB */,
 			);
 			productName = Tidy;
 			productReference = 7C04F7082FBA057200D2DD28 /* Tidy.app */;
@@ -212,6 +215,9 @@
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7C04F7092FBA057200D2DD28 /* Products */;
+			packageReferences = (
+				7C47D00230B0000100D10001 /* XCRemoteSwiftPackageReference "duckdb-swift" */,
+			);
 			projectDirPath = "";
 			projectReferences = (
 				{
@@ -584,6 +590,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7C47D00230B0000100D10001 /* XCRemoteSwiftPackageReference "duckdb-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/duckdb/duckdb-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7C47D00330B0000100D10001 /* DuckDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7C47D00230B0000100D10001 /* XCRemoteSwiftPackageReference "duckdb-swift" */;
+			productName = DuckDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7C04F7002FBA057200D2DD28 /* Project object */;
 }
