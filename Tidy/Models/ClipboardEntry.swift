@@ -8,6 +8,13 @@ struct ClipboardEntry: Identifiable, Equatable {
     let sourceAppName: String?
     let createdAt: Date
     let charCount: Int
+    var isPinned = false
+    var collection = ""
+
+    var captureSource: CaptureSource {
+        CaptureSource(appName: sourceAppName, bundleID: sourceAppBundleID,
+                      url: CaptureSource.safeURL(content.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
 }
 
 struct CorrectionLogEntry: Identifiable, Codable, Equatable {

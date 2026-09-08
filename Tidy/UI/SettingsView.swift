@@ -6,6 +6,8 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.grammarProvider)     private var grammarProvider    = GrammarProviderID.gemini.rawValue
     @AppStorage(AppDefaults.grammarFallbackProvider1) private var grammarFallbackProvider1 = GrammarCorrectionPipeline.noFallbackValue
     @AppStorage(AppDefaults.grammarFallbackProvider2) private var grammarFallbackProvider2 = GrammarCorrectionPipeline.noFallbackValue
+    @AppStorage(AppDefaults.textActionsHotkey) private var textActionsHotkey = Hotkey.textActionsDefault.displayValue
+    @AppStorage(AppDefaults.captureHotkey) private var captureHotkey = Hotkey.captureDefault.displayValue
     @AppStorage(AppDefaults.grammarHotkey)       private var grammarHotkey      = Hotkey.grammarDefault.displayValue
     @AppStorage(AppDefaults.clipboardHotkey)     private var clipboardHotkey    = Hotkey.clipboardDefault.displayValue
     @AppStorage(AppDefaults.askAIHotkey)         private var askAIHotkey        = Hotkey.askAIDefault.displayValue
@@ -56,14 +58,18 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             pageHeader
-            tabBar
-            Divider().opacity(0.5)
-            contentArea
+            HStack(spacing: 0) {
+                tabBar
+                Divider().opacity(0.5)
+                contentArea.frame(maxWidth: .infinity)
+            }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
+        .frame(minWidth: 780, minHeight: 560)
         .onAppear {
             launchAtLogin = appState.launchAtLoginEnabled
             selectedTab = SettingsTab(rawValue: storedSettingsTab) ?? .general
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
             loadKeychainValues()
             codexLogin.refreshStatus(command: codexCLIPath)
             claudeLogin.refreshStatus(command: claudeCLIPath)
@@ -73,6 +79,7 @@ struct SettingsView: View {
             mcpAPIKey = KeychainStore.read(key: MCPServerConfiguration.apiKeyKeychainKey) ?? ""
             appState.asanaService.configurationDidChange()
         }
+        .onChange(of: storedSettingsTab) { _, value in selectedTab = SettingsTab(rawValue: value) ?? .general }
         .onChange(of: selectedTab) { _, tab in
             storedSettingsTab = tab.rawValue
         }
@@ -90,22 +97,7 @@ struct SettingsView: View {
     // MARK: - Header
 
     private var pageHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Settings")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Color(NSColor.labelColor))
-                Text("Configure providers, hotkeys, and preferences")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+        WorkspaceHeader(title: "Settings", subtitle: "Make Tidy feel like yours.") { EmptyView() }
     }
 
     // MARK: - Tab bar
@@ -115,6 +107,7 @@ struct SettingsView: View {
         case model     = "Model"
         case clipboard = "Clipboard"
         case hotkeys   = "Hotkeys"
+        case textActions = "Text Actions"
         case privacy   = "Privacy"
         case jira      = "Jira"
         case asana     = "Asana"
@@ -126,6 +119,7 @@ struct SettingsView: View {
             case .model:     "cpu"
             case .clipboard: "doc.on.clipboard"
             case .hotkeys:   "keyboard"
+            case .textActions: "text.badge.star"
             case .privacy:   "lock.shield"
             case .jira:      "shippingbox"
             case .asana:     "checklist"
@@ -135,37 +129,21 @@ struct SettingsView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 2) {
+        VStack(alignment: .leading, spacing: 5) {
             ForEach(SettingsTab.allCases, id: \.self) { tab in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: tab.systemImage)
-                            .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
-                        Text(tab.rawValue)
-                            .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
-                    }
-                    .foregroundStyle(
-                        selectedTab == tab
-                            ? Color.white
-                            : Color(NSColor.secondaryLabelColor)
-                    )
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(
-                        selectedTab == tab ? Color.accentColor : Color.clear,
-                        in: Capsule()
-                    )
-                }
-                .buttonStyle(.plain)
+                Button { selectedTab = tab } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: tab.systemImage).frame(width: 17)
+                        Text(tab == .model ? "AI providers" : tab == .mcp ? "Connections" : tab.rawValue)
+                        Spacer(minLength: 0)
+                    }.font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                        .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(selectedTab == tab ? WorkspaceDesign.inset : .clear, in: RoundedRectangle(cornerRadius: 9))
+                }.buttonStyle(.plain).accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(NSColor.controlBackgroundColor))
+            Spacer()
+        }.padding(14).frame(width: 174).background(WorkspaceDesign.canvas)
     }
 
     // MARK: - Content
@@ -179,6 +157,7 @@ struct SettingsView: View {
                 case .model:     modelContent
                 case .clipboard: clipboardContent
                 case .hotkeys:   hotkeysContent
+                case .textActions: TextActionSettingsView(store: appState.textActionStore)
                 case .privacy:
                     PrivacyCenterView()
                         .environmentObject(appState)
@@ -187,7 +166,7 @@ struct SettingsView: View {
                 case .mcp:       mcpContent
                 }
             }
-            .padding(20)
+            .padding(30).frame(maxWidth: 900).frame(maxWidth: .infinity)
         }
     }
 
@@ -247,7 +226,7 @@ struct SettingsView: View {
                         Spacer()
                         if !Permissions.isAccessibilityTrusted {
                             Button("Open Settings") { Permissions.openAccessibilitySettings() }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(WorkspaceButtonStyle())
                                 .controlSize(.small)
                         }
                     }
@@ -324,10 +303,10 @@ struct SettingsView: View {
 
                 HStack(spacing: 8) {
                     Button("Save API Keys") { saveKeychainValues() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true))
                         .controlSize(.small)
                     Button("Clear Correction Log") { correctionLogStore.clear() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(WorkspaceButtonStyle())
                         .controlSize(.small)
                     Spacer()
                     Text("\(correctionLogStore.entries.count) corrections logged")
@@ -426,7 +405,7 @@ struct SettingsView: View {
                                     claudeLogin.submitAuthCode(claudeAuthCode)
                                     claudeAuthCode = ""
                                 }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(WorkspaceButtonStyle(prominent: true))
                                 .controlSize(.small)
                                 .disabled(claudeAuthCode.trimmingCharacters(in: .whitespaces).isEmpty)
                             }
@@ -468,20 +447,20 @@ struct SettingsView: View {
                 }
                 Spacer()
                 Button("Refresh") { onRefresh() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
 
                 if isSigningIn {
                     Button("Cancel") { onCancel() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(WorkspaceButtonStyle())
                         .controlSize(.small)
                 } else if !isSignedIn {
                     Button("Sign In") { onSignIn() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true))
                         .controlSize(.small)
                 } else if let onReauthenticate {
                     Button("Sign In Again") { onReauthenticate() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(WorkspaceButtonStyle())
                         .controlSize(.small)
                 }
             }
@@ -490,7 +469,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if authURL != nil {
                         Button("Open Auth URL") { onOpenURL() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(WorkspaceButtonStyle())
                             .controlSize(.small)
                     }
                     Text(output)
@@ -547,10 +526,10 @@ struct SettingsView: View {
             settingsSection(title: "Actions") {
                 HStack(spacing: 8) {
                     Button("Open Palette") { appState.openPalette() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(WorkspaceButtonStyle())
                         .controlSize(.small)
                     Button("Clear History", role: .destructive) { appState.clipboardService.clear() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(WorkspaceButtonStyle())
                         .controlSize(.small)
                 }
             }
@@ -572,9 +551,12 @@ struct SettingsView: View {
                 Text("Format: control+option+j  ·  command+shift+v")
                     .font(.footnote)
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                settingsTextRow(label: "Text actions", systemImage: "text.badge.star", binding: $textActionsHotkey, prompt: "control+option+space")
+                settingsTextRow(label: "Capture selection as task", systemImage: "text.badge.plus", binding: $captureHotkey, prompt: "control+option+t")
                 Button("Apply Hotkeys") { appState.registerHotkeys() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .controlSize(.small)
+                if let error = appState.hotkeyError { Text(error).font(.caption).foregroundStyle(.red) }
             }
         }
     }
@@ -614,7 +596,7 @@ struct SettingsView: View {
 
                 HStack(spacing: 8) {
                     Button("Save Connection") { saveJiraConnection() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true))
                         .controlSize(.small)
 
                     Button {
@@ -629,7 +611,7 @@ struct SettingsView: View {
                             Text("Test Connection")
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
                     .disabled(isTestingJira || jiraSiteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || jiraEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || jiraAPIToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
@@ -760,7 +742,7 @@ struct SettingsView: View {
                     Button("Connect with Asana") {
                         startAsanaAuthorization()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .controlSize(.small)
                     .disabled(
                         isTestingAsana
@@ -806,7 +788,7 @@ struct SettingsView: View {
                             Text("Complete Connection")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .controlSize(.small)
                     .disabled(
                         isTestingAsana
@@ -857,7 +839,7 @@ struct SettingsView: View {
                             Text("Test Connection")
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
                     .disabled(
                         isTestingAsana
@@ -928,7 +910,7 @@ struct SettingsView: View {
 
                 HStack(spacing: 8) {
                     Button("Save Connection") { saveMCPConnection() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspaceButtonStyle(prominent: true))
                         .controlSize(.small)
 
                     Button {
@@ -943,7 +925,7 @@ struct SettingsView: View {
                             Text("Test & Discover Tools")
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
                     .disabled(
                         isTestingMCP
@@ -1115,7 +1097,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             content()
         }
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)

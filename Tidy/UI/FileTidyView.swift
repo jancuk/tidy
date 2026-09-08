@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-// MARK: - View model (unchanged)
-
 @MainActor
 final class FileTidyViewModel: ObservableObject {
     @Published var selectedFolder: URL?
@@ -14,10 +12,13 @@ final class FileTidyViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var undoSessions: [FileTidyUndoSession] = []
 
-    private let service = FileTidyService()
-    private let undoStore = FileTidyUndoLogStore()
+    private var scanTask: Task<Void, Never>?
+    private let service: FileTidyService
+    private let undoStore: FileTidyUndoLogStore
 
-    init() {
+    init(service: FileTidyService = FileTidyService(), undoStore: FileTidyUndoLogStore) {
+        self.service = service
+        self.undoStore = undoStore
         undoSessions = undoStore.sessions
     }
 
@@ -26,6 +27,7 @@ final class FileTidyViewModel: ObservableObject {
     }
 
     func chooseFolder() {
+        guard !isScanning, !isApplying else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -47,17 +49,22 @@ final class FileTidyViewModel: ObservableObject {
             errorMessage = FileTidyError.folderMissing.localizedDescription
             return
         }
+        guard !isScanning, !isApplying else { return }
         isScanning = true
         errorMessage = nil
         statusMessage = "Scanning \(selectedFolder.lastPathComponent)…"
-        Task {
+        let worker = Task.detached { [service] in try service.scan(rootURL: selectedFolder) }
+        scanTask = Task {
             do {
-                let result = try await Task.detached { [service] in
-                    try service.scan(rootURL: selectedFolder)
-                }.value
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                try Task.checkCancellation()
                 scanResult = result
                 selectedProposalIDs = Set(result.proposals.filter(\.isRecommendedByDefault).map(\.id))
                 statusMessage = "\(result.records.count) items scanned · \(result.proposals.count) proposed moves"
+            } catch is CancellationError {
+                scanResult = nil
+                selectedProposalIDs = []
+                statusMessage = "Scan cancelled."
             } catch {
                 scanResult = nil
                 selectedProposalIDs = []
@@ -68,30 +75,42 @@ final class FileTidyViewModel: ObservableObject {
         }
     }
 
+    func cancelScan() { scanTask?.cancel() }
+
+    func clearUndoHistory() {
+        undoStore.clear()
+        undoSessions = undoStore.sessions
+    }
+
     func applySelected() {
-        guard let rootURL = scanResult?.rootURL, !selectedProposals.isEmpty else { return }
+        guard !isApplying, !isScanning, let rootURL = scanResult?.rootURL, !selectedProposals.isEmpty else { return }
         isApplying = true
         errorMessage = nil
         statusMessage = "Applying \(selectedProposals.count) selected moves…"
         Task {
             do {
                 let proposals = selectedProposals
+                let journal = undoStore.recoveryJournal(rootURL: rootURL)
                 let moves = try await Task.detached { [service] in
-                    try service.apply(proposals, rootURL: rootURL)
+                    try service.apply(proposals, rootURL: rootURL, journal: journal)
                 }.value
-                undoStore.append(rootURL: rootURL, moves: moves)
+                undoStore.reload()
                 undoSessions = undoStore.sessions
                 statusMessage = "Moved \(moves.count) items. Undo log updated."
+                isApplying = false
                 scan()
             } catch {
                 errorMessage = error.localizedDescription
-                statusMessage = "Apply failed."
+                undoStore.reload()
+                undoSessions = undoStore.sessions
+                statusMessage = "Apply stopped. Review the undo log for any completed moves."
             }
             isApplying = false
         }
     }
 
     func undo(_ session: FileTidyUndoSession) {
+        guard !isApplying, !isScanning else { return }
         isApplying = true
         errorMessage = nil
         statusMessage = "Undoing \(session.moveCount) moves…"
@@ -103,6 +122,7 @@ final class FileTidyViewModel: ObservableObject {
                 undoStore.remove(session)
                 undoSessions = undoStore.sessions
                 statusMessage = "Undid \(session.moveCount) moves."
+                isApplying = false
                 if selectedFolder != nil { scan() }
             } catch {
                 errorMessage = error.localizedDescription
@@ -120,7 +140,7 @@ final class FileTidyViewModel: ObservableObject {
 // MARK: - Main view
 
 struct FileTidyView: View {
-    @StateObject private var viewModel = FileTidyViewModel()
+    @EnvironmentObject private var viewModel: FileTidyViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -137,8 +157,9 @@ struct FileTidyView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.16), value: viewModel.isScanning)
+            .disabled(viewModel.isApplying)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
     }
 
     // MARK: Content
@@ -149,6 +170,7 @@ struct FileTidyView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     summaryGrid(result)
+                    developerProjectsPanel(result)
                     groupsGrid(result)
                     proposalsPanel(result.proposals)
                     undoPanel
@@ -157,12 +179,11 @@ struct FileTidyView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else if !viewModel.isScanning {
-            ContentUnavailableView(
-                "Preview Folder Cleanup",
-                systemImage: "folder.badge.gearshape",
-                description: Text("Choose one specific folder. Tidy never scans outside it, and every proposed destination stays inside that folder.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack {
+                WorkspaceEmptyState(title: "A calmer folder starts here.",
+                                    detail: "Choose a folder to review suggested moves. Nothing changes until you apply your selection.", icon: "folder.badge.gearshape")
+                if !viewModel.undoSessions.isEmpty { ScrollView { undoPanel.padding(18) }.frame(maxHeight: 300) }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -171,38 +192,27 @@ struct FileTidyView: View {
     // MARK: Page header
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("File Tidy")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Color(NSColor.labelColor))
-                    Text(viewModel.selectedFolder?.path ?? "Private by default — only the folder you explicitly choose is accessed.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            WorkspaceHeader(title: "File Tidy", subtitle: viewModel.selectedFolder?.path ?? "Review, organize, and get back to work.") {
                 HStack(spacing: 8) {
                     Button { viewModel.chooseFolder() } label: {
                         Label("Choose Folder", systemImage: "folder")
                     }
+                    if viewModel.isScanning { Button("Cancel scan") { viewModel.cancelScan() } }
                     Button { viewModel.scan() } label: {
                         Label("Rescan", systemImage: "arrow.clockwise")
                     }
-                    .disabled(viewModel.selectedFolder == nil || viewModel.isScanning)
+                    .disabled(viewModel.selectedFolder == nil || viewModel.isScanning || viewModel.isApplying)
 
                     Button { viewModel.applySelected() } label: {
                         Label("Apply \(viewModel.selectedProposals.count) Moves", systemImage: "checkmark.circle.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .disabled(viewModel.selectedProposals.isEmpty || viewModel.isScanning || viewModel.isApplying)
                 }
                 .controlSize(.small)
             }
 
-            // Status bar
             HStack(spacing: 8) {
                 if viewModel.isScanning {
                     ProgressView().controlSize(.small).frame(width: 14, height: 14)
@@ -212,7 +222,7 @@ struct FileTidyView: View {
                         .fill(viewModel.errorMessage != nil ? Color.red : Color.green)
                         .frame(width: 6, height: 6)
                     Text(viewModel.isScanning ? "Scanning…" : viewModel.statusMessage)
-                        .lineLimit(1)
+                        .lineLimit(3)
                 }
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(viewModel.errorMessage != nil ? Color.red : Color.green)
@@ -223,13 +233,12 @@ struct FileTidyView: View {
                     Text(error)
                         .font(.system(size: 11))
                         .foregroundStyle(.red)
-                        .lineLimit(1)
+                        .lineLimit(3)
                 }
-            }
+            }.padding(.horizontal, 28).padding(.top, 12)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.bottom, 14)
+        .background(WorkspaceDesign.canvas)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 
@@ -245,6 +254,37 @@ struct FileTidyView: View {
     }
 
     // MARK: Groups grid
+
+    @ViewBuilder
+    private func developerProjectsPanel(_ result: FileTidyScanResult) -> some View {
+        if !result.developerProjects.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Developer projects").font(.headline)
+                Text("Sizes include hidden build files, exclude Git metadata and symlinks, and assign nested projects separately. Review moves preserve files for undo; they do not free disk space.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(result.developerProjects) { project in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(project.url.lastPathComponent).font(.headline)
+                            Text(project.url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text(project.gitState.title).font(.caption)
+                                .foregroundStyle(project.gitState == .clean ? Color.green : Color.orange)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(project.displaySize).font(.headline)
+                            Text("\(project.artifactCount) generated folders · \(ByteCountFormatter.string(fromByteCount: project.artifactSize, countStyle: .file))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([project.url]) }
+                    }.padding(.vertical, 6)
+                }
+            }.padding(16).background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        ForEach(Array(result.scanWarnings.enumerated()), id: \.offset) { _, warning in
+            Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+        }
+    }
 
     private func groupsGrid(_ result: FileTidyScanResult) -> some View {
         HStack(alignment: .top, spacing: 12) {
@@ -357,7 +397,7 @@ private struct SummaryTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
@@ -471,7 +511,7 @@ private struct ProposalRow: View {
                 Text(proposal.reason)
                     .font(.system(size: 12))
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     pathLine(label: "From", value: proposal.sourcePath)
@@ -482,6 +522,9 @@ private struct ProposalRow: View {
                     metadataChip(proposal.category.title)
                     metadataChip(proposal.usagePattern)
                     if let project = proposal.projectHint { metadataChip(project) }
+                    Spacer()
+                    Button("Inspect") { NSWorkspace.shared.activateFileViewerSelecting([proposal.sourceURL]) }
+                        .font(.caption)
                 }
             }
         }
@@ -518,7 +561,7 @@ private struct ProposalRow: View {
             .foregroundStyle(Color(NSColor.secondaryLabelColor))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(Color(NSColor.controlBackgroundColor), in: Capsule())
+            .background(WorkspaceDesign.surface, in: Capsule())
             .overlay(Capsule().stroke(Color(NSColor.separatorColor).opacity(0.4), lineWidth: 0.5))
     }
 }
@@ -548,7 +591,7 @@ private struct UndoSessionRow: View {
             }
             Spacer()
             Button("Undo") { undo() }
-                .buttonStyle(.bordered)
+                .buttonStyle(WorkspaceButtonStyle())
                 .controlSize(.small)
         }
         .padding(.horizontal, 14)
@@ -604,7 +647,7 @@ private struct PanelTitleRow<Content: View>: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(WorkspaceDesign.surface)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 }

@@ -13,9 +13,12 @@ build/
 .build-output/
 *.profraw
 *.profdata
+*.xcresult
+*.xcarchive
 
 # Local Codex/Claude worktrees and assistant state
 .claude/
+worktrees/
 
 # Local developer config (Team ID, signing overrides)
 Local.xcconfig
@@ -39,3 +42,10 @@ docs/superpowers/
 *.sqlite-wal
 *.db
 corrections.json
+productivity.json
+productivity-sync-settings.json
+text-actions.json
+file-tidy-undo.json
+notification-digests.json
+notification-briefing.json
+Today Recovery/

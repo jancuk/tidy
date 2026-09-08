@@ -27,7 +27,7 @@ struct JiraStandupView: View {
                 teamBoardView
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
         .task(id: jiraService.currentUser?.accountId) {
             loadDraftsIfNeeded()
             if jiraService.standupUpdates.isEmpty {
@@ -69,7 +69,7 @@ struct JiraStandupView: View {
                 standupTab(.teamBoard)
             }
             .padding(3)
-            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             Spacer()
 
@@ -83,14 +83,14 @@ struct JiraStandupView: View {
                         Label("Refresh Updates", systemImage: "arrow.clockwise")
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(WorkspaceButtonStyle())
                 .controlSize(.small)
                 .disabled(jiraService.isLoadingStandup)
             }
         }
         .padding(.horizontal, 24)
         .frame(height: 66)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(WorkspaceDesign.surface)
     }
 
     private func standupTab(_ tab: JiraStandupMode) -> some View {
@@ -103,7 +103,7 @@ struct JiraStandupView: View {
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
                 .background(
-                    mode == tab ? Color(NSColor.windowBackgroundColor) : .clear,
+                    mode == tab ? WorkspaceDesign.canvas : .clear,
                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                 )
         }
@@ -187,7 +187,7 @@ struct JiraStandupView: View {
             }
         }
         .padding(15)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)
@@ -259,7 +259,7 @@ struct JiraStandupView: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 .padding(10)
-                                .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .background(WorkspaceDesign.canvas, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
                         }
                     }
@@ -290,7 +290,7 @@ struct JiraStandupView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(WorkspaceButtonStyle(prominent: true))
             .controlSize(.large)
             .disabled(validDrafts.isEmpty || isPosting)
 
@@ -300,7 +300,7 @@ struct JiraStandupView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(WorkspaceDesign.surface)
     }
 
     private func previewMetric(value: Int, label: String, tint: Color) -> some View {
@@ -729,7 +729,7 @@ private struct JiraStandupDraftRow: View {
         .background(
             draft.isIncluded
                 ? Color.accentColor.opacity(0.06)
-                : Color(NSColor.controlBackgroundColor),
+                : WorkspaceDesign.surface,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay(
@@ -827,7 +827,7 @@ private struct JiraStandupMemberCard: View {
                             }
                             .padding(.horizontal, 9)
                             .frame(height: 31)
-                            .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .background(WorkspaceDesign.canvas, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -864,7 +864,7 @@ private struct JiraStandupMemberCard: View {
                                     .foregroundStyle(Color(NSColor.tertiaryLabelColor))
                             }
                             .padding(9)
-                            .background(Color(NSColor.windowBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .background(WorkspaceDesign.canvas, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -872,7 +872,7 @@ private struct JiraStandupMemberCard: View {
             }
         }
         .padding(14)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(
@@ -1067,7 +1067,7 @@ private struct JiraStandupRichComposer: View {
             }
         }
         .background(
-            Color(NSColor.controlBackgroundColor),
+            WorkspaceDesign.surface,
             in: RoundedRectangle(cornerRadius: 7, style: .continuous)
         )
         .overlay(
@@ -1096,7 +1096,7 @@ private struct JiraStandupRichComposer: View {
                 Button("Insert Date") {
                     insertSelectedDate()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspaceButtonStyle(prominent: true))
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -1205,7 +1205,7 @@ private struct JiraStandupIssueInspector: View {
             Divider().opacity(0.55)
             inspectorActions
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
         .task(id: issue.id) {
             await jiraService.loadComments(for: issue)
         }
@@ -1233,7 +1233,7 @@ private struct JiraStandupIssueInspector: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
                     .frame(width: 24, height: 24)
-                    .background(Color(NSColor.controlBackgroundColor), in: Circle())
+                    .background(WorkspaceDesign.surface, in: Circle())
             }
             .buttonStyle(.plain)
             .help("Close ticket details")
@@ -1357,7 +1357,7 @@ private struct JiraStandupIssueInspector: View {
                         }
                         .padding(9)
                         .background(
-                            Color(NSColor.controlBackgroundColor),
+                            WorkspaceDesign.surface,
                             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                         )
                     }
@@ -1403,7 +1403,7 @@ private struct JiraStandupIssueInspector: View {
                             Label("Post Comment", systemImage: "paperplane.fill")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspaceButtonStyle(prominent: true))
                     .controlSize(.small)
                     .disabled(
                         commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1423,14 +1423,14 @@ private struct JiraStandupIssueInspector: View {
             } label: {
                 Label("Open in Jira", systemImage: "arrow.up.right.square")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(WorkspaceButtonStyle())
 
             Spacer()
 
             Button(action: onOpenInWorkbench) {
                 Label("Open Workbench", systemImage: "hammer")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(WorkspaceButtonStyle(prominent: true))
         }
         .controlSize(.small)
         .padding(12)
@@ -1482,7 +1482,7 @@ private struct JiraStandupIssueInspector: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(11)
                 .background(
-                    Color(NSColor.controlBackgroundColor),
+                    WorkspaceDesign.surface,
                     in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                 )
         }
@@ -1513,7 +1513,7 @@ private struct JiraStandupMetricCard: View {
                 .foregroundStyle(Color(NSColor.tertiaryLabelColor))
         }
         .padding(13)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)

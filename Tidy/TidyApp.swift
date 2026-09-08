@@ -23,6 +23,12 @@ struct TidyApp: App {
         .defaultSize(width: 1220, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandMenu("Text") {
+                Button("Text Actions…") { appState.textActionController.show(text: "") }
+                    .keyboardShortcut(" ", modifiers: [.command, .shift])
+                Button("Text Actions for Selection…") { appState.textActionController.showSelection() }
+                Button("Custom Actions…") { appState.openTextActionSettings() }
+            }
             CommandMenu("Navigate") {
                 ForEach(appState.visibleDashboardSections) { section in
                     Button(section.fullTitle) {
@@ -47,7 +53,8 @@ struct TidyApp: App {
             TidyMenuBarView(
                 appState: appState,
                 jiraService: appState.jiraService,
-                notificationService: appState.unifiedNotificationService
+                notificationService: appState.unifiedNotificationService,
+                productivity: appState.productivityService
             )
         }
         .menuBarExtraStyle(.menu)
@@ -74,9 +81,42 @@ private struct TidyMenuBarView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var jiraService: JiraService
     @ObservedObject var notificationService: UnifiedNotificationService
+    @ObservedObject var productivity: ProductivityService
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        Button {
+            openWindow(id: "main")
+            appState.openToday()
+        } label: {
+            Label("Today · \(productivity.todayTasks.count) tasks · \(productivity.overdueTasks.count) overdue", systemImage: "sun.max")
+        }
+
+        Menu("Capture") {
+            ForEach(ProductivityKind.allCases) { kind in
+                Button("New \(kind.title.lowercased())") {
+                    openWindow(id: "main")
+                    appState.openToday(capture: kind)
+                }
+            }
+        }
+
+        if let session = productivity.snapshot.session {
+            Button("\(session.title) · \(Int(ceil(session.remaining(at: productivity.now) / 60))) min left") {
+                openWindow(id: "main")
+                appState.openToday()
+            }
+        }
+
+        Divider()
+
+        Button("Text Actions for Selection…") { appState.textActionController.showSelection() }
+        Button("Capture Selection as Task") { appState.textActionController.showSelection(captureKind: .task) }
+        Button("Capture Selection as Note") { appState.textActionController.showSelection(captureKind: .note) }
+        Button("Text Actions for Clipboard…") {
+            appState.textActionController.show(text: NSPasteboard.general.string(forType: .string) ?? "")
+        }
+
         Button {
             appState.openAskAI()
         } label: {

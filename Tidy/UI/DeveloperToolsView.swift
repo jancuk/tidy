@@ -77,7 +77,7 @@ struct DeveloperToolsView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(WorkspaceDesign.canvas)
         }
     }
 
@@ -123,8 +123,8 @@ struct DeveloperToolsView: View {
                 .padding(.horizontal, 8)
             }
         }
-        .frame(width: 210)
-        .background(Color(NSColor.controlBackgroundColor))
+        .frame(width: 225)
+        .background(WorkspaceDesign.surface)
         .overlay(alignment: .trailing) { Divider().opacity(0.5) }
     }
 }
@@ -529,31 +529,16 @@ private struct ToolScreen<ToolbarContent: View, Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color(NSColor.labelColor))
-                        Text(subtitle)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    }
-                    Spacer()
-                    HStack(spacing: 6) { toolbar }
-                        .controlSize(.small)
-                }
+            WorkspaceHeader(title: title, subtitle: subtitle) { EmptyView() }
+            HStack(spacing: 10) {
                 StatusPill(text: status, isError: isError)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .background(Color(NSColor.controlBackgroundColor))
-            .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+                Spacer()
+                toolbar
+            }.buttonStyle(WorkspaceButtonStyle()).controlSize(.small).padding(.horizontal, 22).padding(.vertical, 14)
 
-            content.padding(14)
+            content.padding(22)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
     }
 }
 
@@ -858,7 +843,7 @@ private struct PanelHeader<Content: View>: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(WorkspaceDesign.surface)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 }

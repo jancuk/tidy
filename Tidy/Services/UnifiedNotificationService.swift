@@ -17,9 +17,9 @@ final class UnifiedNotificationService: ObservableObject {
     private let cacheURL: URL
     private let briefingCacheURL: URL
 
-    init(requestLogStore: AIRequestLogStore) {
+    init(requestLogStore: AIRequestLogStore, cacheDirectory: URL? = nil) {
         self.requestLogStore = requestLogStore
-        let directory = SecureLocalStorage.applicationSupportDirectory()
+        let directory = cacheDirectory ?? SecureLocalStorage.applicationSupportDirectory()
         cacheURL = directory.appendingPathComponent("notification-digests.json")
         briefingCacheURL = directory.appendingPathComponent("notification-briefing.json")
         loadCache()
@@ -432,7 +432,7 @@ final class UnifiedNotificationService: ObservableObject {
 enum NotificationBriefingFallback {
     static func summarize(_ digests: [UnifiedNotificationDigest]) -> String {
         let actions = digests.compactMap { digest -> String? in
-            let line = digest.summary
+            let line = (NotificationReadingContent.readableSummary(digest) ?? "Saved source data needs a fresh summary.")
                 .split(separator: "\n")
                 .map(String.init)
                 .first {
@@ -457,13 +457,18 @@ enum NotificationBriefingFallback {
 
 enum NotificationFallbackSummarizer {
     static func summarize(_ text: String) -> String {
+        if let structured = NotificationReadingContent.structuredSummary(text) { return structured }
+        if NotificationReadingContent.containsSourceData(text) {
+            return "This source returned incomplete structured data. Refresh to try again."
+        }
         let normalized = text
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return "No notifications returned." }
 
         let sentences = normalized
-            .components(separatedBy: CharacterSet(charactersIn: ".!?"))
+            .replacingOccurrences(of: "(?<=[.!?])\\s+(?=[A-Z])", with: "\n", options: .regularExpression)
+            .components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.count >= 8 }
         let selected = Array(sentences.prefix(5))

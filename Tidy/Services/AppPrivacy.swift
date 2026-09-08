@@ -67,6 +67,14 @@ enum PrivacyDataInventory {
     }
 
     private static let definitions: [PrivacyStorageItem] = [
+        PrivacyStorageItem(id: "text-actions", title: "Text action presets", detail: "Custom instructions and optional shortcuts; no selected text", fileNames: ["text-actions.json"], byteCount: 0),
+        PrivacyStorageItem(
+            id: "productivity",
+            title: "Today workspace",
+            detail: "Notes, tasks, daily focus, routine history, and local reminder settings",
+            fileNames: ["productivity.json", "productivity-sync-settings.json"],
+            byteCount: 0
+        ),
         PrivacyStorageItem(
             id: "clipboard",
             title: "Clipboard history",

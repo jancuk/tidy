@@ -119,7 +119,7 @@ xcodebuild test -project Tidy.xcodeproj -scheme Tidy \
 # Run in Xcode: scheme Tidy, destination My Mac, ⌘R
 ```
 
-`Local.xcconfig` in the repo root (gitignored) must contain `DEVELOPMENT_TEAM = <your-team-id>` for signing. Leave blank to let Xcode prompt.
+For signed CLI builds, put `DEVELOPMENT_TEAM = <your-team-id>` in the gitignored `Local.xcconfig` and pass `-xcconfig Local.xcconfig` to xcodebuild. The project does not automatically load that file. For Xcode builds, select a team in Signing & Capabilities. Unit tests can run with `CODE_SIGNING_ALLOWED=NO`; UI tests require a working development signature.
 
 ## Required Permissions
 
@@ -151,3 +151,14 @@ xcodebuild test -project Tidy.xcodeproj -scheme Tidy \
 ## Clipboard Privacy
 
 `ClipboardService` skips entries whose `sourceAppBundleID` matches the `deniedBundleIDs` set (1Password, LastPass, Bitwarden, Dashlane). Add new password managers there if needed.
+
+## Text Actions and Connected Workflows
+
+- `TextActionController` owns the floating preview and request cancellation. `SelectedTextService` captures the source and verifies its app, focused element, UTF-16 range, and document before AX replacement or restoration.
+- `TextActionStore` persists versioned custom presets in `text-actions.json`; imported actions receive new IDs and no global shortcuts. General text transformations use `AskAIService.transform`, while grammar retains `GrammarCorrectionPipeline`. The palette excludes CLI providers with filesystem tools, including from grammar fallbacks.
+- `AppState` owns text actions, selected-text access, the preset store, and `FileTidyViewModel`. Do not instantiate these in views.
+- Text actions: `control+option+space` (`AppDefaults.textActionsHotkey`). Capture selected text as a Today task: `control+option+t` (`AppDefaults.captureHotkey`). Existing grammar, clipboard, and Ask AI shortcuts remain available.
+- Clipboard favorites/collections are stored in SQLite. Preserve metadata on recopy and exempt pinned entries from automatic retention; explicit delete/clear still removes them.
+- `ProductivityItem.source` is optional for backward compatibility. Captures keep full text, app metadata, and a supported source URL when supplied.
+- `DeveloperProjectScanner` measures projects and proposes generated-folder review moves. Normalize filesystem aliases before deriving relative paths or querying Git. Never move tracked generated files; record recovery paths before a move.
+- Workflow documentation and the focused UI test command are in `docs/text-and-cleanup-workflows.md`.

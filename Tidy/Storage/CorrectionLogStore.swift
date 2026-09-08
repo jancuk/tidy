@@ -5,8 +5,9 @@ final class CorrectionLogStore: ObservableObject {
     @Published private(set) var entries: [CorrectionLogEntry] = []
     private let url: URL
 
-    init() {
-        let directory = SecureLocalStorage.applicationSupportDirectory()
+    init(directory: URL? = nil) {
+        let directory = directory ?? SecureLocalStorage.applicationSupportDirectory()
+        SecureLocalStorage.ensureOwnerOnlyDirectory(at: directory)
         url = directory.appendingPathComponent("corrections.json")
         load()
     }

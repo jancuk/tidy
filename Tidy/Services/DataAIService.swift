@@ -40,6 +40,7 @@ struct DataAIService {
         - Return one SELECT query or a WITH query ending in SELECT.
         - Never use file-reading functions, paths, URLs, extensions, COPY, ATTACH, PRAGMA, or data-changing SQL.
         - Quote every table and column identifier with double quotes.
+        - CSV columns are imported as text to preserve identifiers. Cast numeric columns explicitly for arithmetic; report invalid numeric values.
         - Do not add a LIMIT; Tidy applies its own preview limit.
         - Prefer useful aggregate results over returning the entire input for analysis questions.
         - For combine requests, use UNION ALL BY NAME for appends or an explicit JOIN for relational combinations.

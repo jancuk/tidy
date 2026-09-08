@@ -24,7 +24,7 @@ enum TidyGoal: String, CaseIterable, Identifiable, Codable {
         case .writing: "Grammar fixes, suggestions, and Ask AI"
         case .clipboard: "Searchable history and quick paste"
         case .cleanup: "Preview-first cleanup with undo"
-        case .dailyWork: "Briefings, Jira, Asana, and workflows"
+        case .dailyWork: "Daily focus, notes, reminders, routines, and connected work"
         case .developerDesk: "Terminal, JSON, JWT, diff, and converters"
         }
     }
@@ -48,7 +48,7 @@ enum TidyGoal: String, CaseIterable, Identifiable, Codable {
         case .cleanup:
             [.fileTidy]
         case .dailyWork:
-            [.workflows, .data, .notifications, .jira, .asana]
+            [.today, .workflows, .data, .notifications, .jira, .asana]
         case .developerDesk:
             [.data, .terminal, .developerTools, .aiRequestLog]
         }
@@ -91,10 +91,10 @@ enum DeveloperWorkflowRegistry {
         DeveloperWorkflowDefinition(
             id: .startDay,
             title: "Start My Day",
-            detail: "Build a briefing from Slack, Gmail, and Calendar, then focus on the actions that need attention.",
+            detail: "Review pending items, choose today’s focus, and make room for your routines.",
             systemImage: "sun.max.fill",
-            actionTitle: "Build briefing",
-            requiredSections: [.notifications]
+            actionTitle: "Plan today",
+            requiredSections: [.today]
         ),
         DeveloperWorkflowDefinition(
             id: .meetingPrep,
@@ -123,10 +123,10 @@ enum DeveloperWorkflowRegistry {
         DeveloperWorkflowDefinition(
             id: .wrapUp,
             title: "Wrap Up My Day",
-            detail: "Open the Jira stand-up workspace to capture progress, blockers, and next steps.",
+            detail: "Reflect on today and leave yourself a note for tomorrow. Your daily notes stay on this Mac.",
             systemImage: "moon.stars.fill",
-            actionTitle: "Draft update",
-            requiredSections: [.jira]
+            actionTitle: "Write reflection",
+            requiredSections: [.today]
         )
     ]
 }

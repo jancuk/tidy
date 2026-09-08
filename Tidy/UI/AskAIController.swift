@@ -41,6 +41,16 @@ final class AskAIController {
         }
     }
 
+    func show(contextText: String) {
+        guard !model.isLoading else { show(); return }
+        clear()
+        model.enabledSources = []
+        model.selectedMCPSources = []
+        model.selectedFolderSources = []
+        model.query = "Help me with this text:\n\n" + contextText
+        show()
+    }
+
     func show() {
         if panel == nil {
             let panel = NSPanel(

@@ -1,62 +1,106 @@
 import Foundation
 
-enum DataWorkspaceMode: String, CaseIterable, Identifiable, Sendable {
-    case analyze
-    case combine
-    case compare
+enum DataWorkspaceMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case lookup, replace, combine, join, compare, analyze
 
     var id: String { rawValue }
-
     var title: String {
-        rawValue.capitalized
+        switch self {
+        case .lookup: "Lookup"
+        case .replace: "Replace"
+        case .combine: "Append"
+        case .join: "Join"
+        case .compare: "Reconcile"
+        case .analyze: "Analyze"
+        }
     }
-
     var detail: String {
         switch self {
-        case .analyze: "Ask questions, summarize trends, and find data-quality issues."
-        case .combine: "Append or join CSV files into one reusable result."
-        case .compare: "Find added, removed, and changed records between CSV files."
+        case .lookup: "Bring a value from another table into every matching row."
+        case .replace: "Find and replace values without changing your original file."
+        case .combine: "Stack files into one table, aligned by column name."
+        case .join: "Connect two tables using matching columns."
+        case .compare: "Find added, removed, and changed records across two files."
+        case .analyze: "Check data quality or summarize numbers by category."
         }
     }
-
     var systemImage: String {
         switch self {
-        case .analyze: "sparkles.rectangle.stack"
+        case .lookup: "magnifyingglass"
+        case .replace: "arrow.triangle.2.circlepath"
         case .combine: "rectangle.stack.badge.plus"
+        case .join: "point.3.connected.trianglepath.dotted"
         case .compare: "arrow.left.arrow.right.square"
+        case .analyze: "chart.bar.xaxis"
         }
     }
-
-    var promptPlaceholder: String {
+    var example: String {
         switch self {
-        case .analyze: "What would you like to learn from this data?"
-        case .combine: "How should these files be combined?"
-        case .compare: "What should Tidy compare between these files?"
+        case .lookup: "Add customer names to orders"
+        case .replace: "Standardize statuses and labels"
+        case .combine: "Consolidate monthly exports"
+        case .join: "Connect orders with customers"
+        case .compare: "Check invoices against payments"
+        case .analyze: "Find missing values and total sales"
         }
     }
+    var needsPair: Bool { self == .lookup || self == .join || self == .compare }
+}
 
-    var examplePrompts: [String] {
+struct DataWorkflowConfiguration: Equatable, Codable, Sendable {
+    var leftID: UUID?
+    var rightID: UUID?
+    var leftKey = ""
+    var rightKey = ""
+    var valueColumn = ""
+    var find = ""
+    var replacement = ""
+    var exactReplacement = true
+    var joinKind: DataJoinKind = .left
+    var differencesOnly = true
+    var groupColumn = ""
+    var metricColumn = ""
+    var aggregation: DataAggregation = .profile
+}
+
+enum DataJoinKind: String, CaseIterable, Identifiable, Codable, Sendable {
+    case left = "Keep all main rows"
+    case inner = "Matching rows only"
+    case full = "Keep all rows from both"
+    var id: String { rawValue }
+    var sql: String {
         switch self {
-        case .analyze:
-            [
-                "Summarize this data and highlight unusual values",
-                "Show totals and averages by the most useful category",
-                "Find duplicates, missing values, and possible data-quality issues"
-            ]
-        case .combine:
-            [
-                "Append these files and align matching columns",
-                "Join these files using their shared ID column",
-                "Combine everything and add the source filename"
-            ]
-        case .compare:
-            [
-                "Show added, removed, and changed records",
-                "Compare totals between the two files",
-                "Find IDs whose values changed by more than 10%"
-            ]
+        case .left: "LEFT JOIN"
+        case .inner: "INNER JOIN"
+        case .full: "FULL OUTER JOIN"
         }
     }
+}
+
+enum DataAggregation: String, CaseIterable, Identifiable, Codable, Sendable {
+    case profile = "Column quality"
+    case count = "Count rows"
+    case sum = "Sum"
+    case average = "Average"
+    case minimum = "Minimum"
+    case maximum = "Maximum"
+    var id: String { rawValue }
+    var needsMetric: Bool { self != .profile && self != .count }
+    var sql: String {
+        switch self {
+        case .sum: "SUM"
+        case .average: "AVG"
+        case .minimum: "MIN"
+        case .maximum: "MAX"
+        default: "COUNT"
+        }
+    }
+}
+
+struct DataResultCount: Identifiable, Equatable {
+    let label: String
+    let count: Int
+    var id: String { label }
 }
 
 struct DataColumn: Identifiable, Equatable, Sendable {
@@ -114,6 +158,7 @@ struct DataWorkspaceMessage: Identifiable, Equatable, Sendable {
 }
 
 enum DataWorkspaceError: LocalizedError, Equatable {
+    case invalidConfiguration(String)
     case noSources
     case needsMultipleSources(DataWorkspaceMode)
     case noSharedColumns
@@ -123,6 +168,8 @@ enum DataWorkspaceError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .invalidConfiguration(let message):
+            message
         case .noSources:
             "Add at least one CSV file first."
         case .needsMultipleSources(let mode):
@@ -137,4 +184,11 @@ enum DataWorkspaceError: LocalizedError, Equatable {
             "The AI provider did not return a usable data plan. Try rephrasing the request."
         }
     }
+}
+
+struct DataWorkflowRecipe: Identifiable, Codable, Equatable {
+    let id: UUID
+    let name: String
+    let mode: DataWorkspaceMode
+    let configuration: DataWorkflowConfiguration
 }

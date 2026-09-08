@@ -9,6 +9,16 @@ struct Hotkey: Equatable {
     static let grammarDefault = Hotkey(keyCode: UInt32(kVK_ANSI_G), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+g")
     static let clipboardDefault = Hotkey(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+v")
     static let askAIDefault = Hotkey(keyCode: UInt32(kVK_ANSI_J), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+j")
+    static let textActionsDefault = Hotkey(keyCode: UInt32(kVK_Space), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+space")
+    static let captureDefault = Hotkey(keyCode: UInt32(kVK_ANSI_T), carbonModifiers: UInt32(controlKey | optionKey), displayValue: "control+option+t")
+
+    static func validated(_ raw: String) -> Hotkey? {
+        let parts = raw.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let key = parts.last, keyCodeForKey(key) != nil, parts.count >= 2,
+              parts.dropLast().allSatisfy({ ["control", "option", "command", "shift"].contains($0) }),
+              parts.contains("control") || parts.contains("command") else { return nil }
+        return parse(parts.joined(separator: "+"), fallback: .textActionsDefault)
+    }
 
     static func parse(_ rawValue: String, fallback: Hotkey) -> Hotkey {
         let pieces = rawValue
@@ -93,6 +103,11 @@ struct Hotkey: Equatable {
 }
 
 enum AppDefaults {
+    static let textActionsHotkey = "textActionsHotkey"
+    static let captureHotkey = "captureHotkey"
+    static let textActionLanguage = "textActionLanguage"
+    static let textActionTone = "textActionTone"
+    static let dataWorkflowRecipes = "dataWorkflowRecipes"
     static let grammarHotkey = "grammarHotkey"
     static let clipboardHotkey = "clipboardHotkey"
     static let askAIHotkey = "askAIHotkey"
@@ -139,6 +154,10 @@ enum AppDefaults {
 extension UserDefaults {
     func registerTidyDefaults() {
         register(defaults: [
+            AppDefaults.textActionsHotkey: Hotkey.textActionsDefault.displayValue,
+            AppDefaults.captureHotkey: Hotkey.captureDefault.displayValue,
+            AppDefaults.textActionLanguage: "English",
+            AppDefaults.textActionTone: "Professional",
             AppDefaults.grammarHotkey: Hotkey.grammarDefault.displayValue,
             AppDefaults.clipboardHotkey: Hotkey.clipboardDefault.displayValue,
             AppDefaults.askAIHotkey: Hotkey.askAIDefault.displayValue,

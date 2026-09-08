@@ -10,7 +10,7 @@ struct TerminalView: View {
             Divider().opacity(0.45)
             terminalContent
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
         .onAppear {
             terminalService.startIfNeeded()
         }
@@ -60,10 +60,10 @@ struct TerminalView: View {
             }
             .help("Restart terminal session")
         }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 14)
-        .frame(height: 54)
+        .buttonStyle(WorkspaceButtonStyle())
+        .padding(.horizontal, 22)
+        .frame(height: 72)
+        .background(WorkspaceDesign.canvas)
     }
 
     private var statusIndicator: some View {

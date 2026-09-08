@@ -3,6 +3,7 @@ import Foundation
 
 protocol TabularDataEngine: Sendable {
     func registerCSV(_ url: URL, id: UUID, tableName: String) async throws -> DataSource
+    func registerQuery(_ sql: String, id: UUID, tableName: String, displayName: String) async throws -> DataSource
     func removeTable(named tableName: String) async throws
     func query(_ sql: String, limit: Int) async throws -> DataTable
     func exportCSV(query sql: String, to url: URL) async throws
@@ -17,16 +18,28 @@ actor DuckDBDataEngine: TabularDataEngine {
         let table = DataQueryBuilder.quotedIdentifier(tableName)
         let path = DataQueryBuilder.quotedLiteral(url.path)
         try connection.execute("""
-        CREATE OR REPLACE VIEW \(table) AS
+        CREATE OR REPLACE TABLE \(table) AS
         SELECT * FROM read_csv(
             \(path),
             auto_detect = true,
+            all_varchar = true,
             header = true,
             sample_size = -1,
             ignore_errors = false
         )
         """)
 
+        return try describeSource(url: url, id: id, tableName: tableName, displayName: url.lastPathComponent)
+    }
+
+    func registerQuery(_ sql: String, id: UUID, tableName: String, displayName: String) throws -> DataSource {
+        try activeConnection().execute("CREATE TABLE \(DataQueryBuilder.quotedIdentifier(tableName)) AS \(sql)")
+        return try describeSource(url: URL(string: "tidy-result://\(id.uuidString)")!, id: id, tableName: tableName, displayName: displayName)
+    }
+
+    private func describeSource(url: URL, id: UUID, tableName: String, displayName: String) throws -> DataSource {
+        let connection = try activeConnection()
+        let table = DataQueryBuilder.quotedIdentifier(tableName)
         let description = try connection.query("DESCRIBE SELECT * FROM \(table)")
         let nameColumn = description[0].cast(to: String.self)
         let typeColumn = description[1].cast(to: String.self)
@@ -45,7 +58,7 @@ actor DuckDBDataEngine: TabularDataEngine {
             id: id,
             url: url,
             tableName: tableName,
-            displayName: url.lastPathComponent,
+            displayName: displayName,
             rowCount: rowCount,
             columns: columns,
             byteCount: byteCount
@@ -53,7 +66,7 @@ actor DuckDBDataEngine: TabularDataEngine {
     }
 
     func removeTable(named tableName: String) throws {
-        try activeConnection().execute("DROP VIEW IF EXISTS \(DataQueryBuilder.quotedIdentifier(tableName))")
+        try activeConnection().execute("DROP TABLE IF EXISTS \(DataQueryBuilder.quotedIdentifier(tableName))")
     }
 
     func query(_ sql: String, limit: Int = 250) throws -> DataTable {

@@ -14,45 +14,15 @@ struct AsanaView: View {
             Divider().opacity(0.4)
             content
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
         .task {
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
             await asanaService.load()
         }
     }
 
     private var workspaceHeader: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(red: 0.95, green: 0.31, blue: 0.45),
-                                     Color(red: 0.55, green: 0.32, blue: 0.84)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                VStack(spacing: 2) {
-                    Circle().frame(width: 7, height: 7)
-                    HStack(spacing: 3) {
-                        Circle().frame(width: 7, height: 7)
-                        Circle().frame(width: 7, height: 7)
-                    }
-                }
-                .foregroundStyle(.white)
-            }
-            .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Asana")
-                    .font(.system(size: 17, weight: .bold))
-                Text(asanaService.currentUser.map { "\($0.name) · My Tasks" } ?? "My Tasks workspace")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-
-            Spacer()
-
+        WorkspaceHeader(title: "Asana", subtitle: asanaService.currentUser.map { "\($0.name) · My tasks" } ?? "Your tasks, with room to focus.") {
             if !asanaService.workspaces.isEmpty {
                 Picker("Workspace", selection: workspaceBinding) {
                     ForEach(asanaService.workspaces) { workspace in
@@ -79,14 +49,12 @@ struct AsanaView: View {
                     Image(systemName: "arrow.clockwise")
                 }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(WorkspaceButtonStyle())
             .controlSize(.small)
             .help("Refresh Asana tasks")
             .disabled(asanaService.isLoading)
         }
-        .padding(.horizontal, 18)
-        .frame(height: 64)
-        .background(Color(NSColor.controlBackgroundColor))
+
     }
 
     private var filterBar: some View {
@@ -100,10 +68,10 @@ struct AsanaView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .foregroundStyle(
-                            filter == item ? Color.white : Color(NSColor.secondaryLabelColor)
+                            filter == item ? Color.primary : Color(NSColor.secondaryLabelColor)
                         )
                         .background(
-                            filter == item ? Color.accentColor : Color.clear,
+                            filter == item ? WorkspaceDesign.inset : Color.clear,
                             in: Capsule()
                         )
                 }
@@ -120,7 +88,7 @@ struct AsanaView: View {
         }
         .padding(.horizontal, 18)
         .frame(height: 48)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.65))
+        .background(WorkspaceDesign.surface.opacity(0.65))
     }
 
     @ViewBuilder
@@ -256,7 +224,7 @@ struct AsanaView: View {
         }
         .padding(13)
         .background(
-            Color(NSColor.controlBackgroundColor),
+            WorkspaceDesign.surface,
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .overlay(

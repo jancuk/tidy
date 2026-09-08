@@ -22,12 +22,14 @@
 
 ## Features
 
+- **Today** — daily focus notes, pending tasks, searchable notes and code snippets, local reminders, and custom coding or movement routines with timers and completion history (`⌘⇧T`). Optional [Google Drive folder backup and two-way sync](docs/today-google-drive-sync.md) includes restore and conflict review.
+- **Text actions** — select text and press `⌃⌥Space` to fix grammar, shorten, translate, change tone, summarize, or create bullet points. Review before/after, replace when the app supports verified selection, or copy the result. Save and share custom action presets in Settings.
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
 - **Ask AI** — press `⌃⌥J` for a Quick AI chat panel with source slots for MCP, llm-wiki, and local folder context.
 - **Unified notifications** — connect a remote MCP server and summarize Slack, Gmail, and Google Calendar in one inbox.
-- **Developer workflows** — start-of-day briefing, meeting preparation, safe project cleanup, context sharing, and end-of-day updates.
-- **Clipboard history** — automatic history with search, hover-copy, and a quick-access palette (`⌃⌥V`).
-- **File Tidy** — local folder scanning with preview-first move proposals, duplicate/stale/build-artifact detection, selective approval, and undo logs.
+- **Developer workflows** — local daily planning and reflection, meeting preparation, safe project cleanup, and context sharing.
+- **Clipboard history** — searchable history and a quick palette (`⌃⌥V`), persistent favorites and collections, plain-text paste, JSON/link actions, and one-action capture into Today.
+- **File Tidy** — preview-first folder organization, project disk usage and generated-folder detection, Git warnings and tracked-file protection, selective approval, and durable undo logs. Review moves preserve files rather than freeing disk space.
 - **Jira workspace** — browse and multi-filter active-sprint tickets, understand status/priority/assignee changes from the notification center and menu bar, and read, post, or edit comments without leaving Tidy.
 - **Asana My Tasks** — connect a workspace, search and filter assigned tasks by due date, mark work complete, and jump to the original task in Asana.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
@@ -35,6 +37,8 @@
 - **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool.
 - API keys stored securely in macOS Keychain.
 - Goal-based onboarding and a Privacy Center with local-only AI controls, storage visibility, and data clearing.
+
+See the [text, clipboard, capture, and developer-cleanup guide](docs/text-and-cleanup-workflows.md) for shortcuts, presets, and recovery behavior. These additions are unreleased source changes.
 
 ## Requirements
 
@@ -63,14 +67,14 @@ cd Tidy
 
 #### 2. Set your Team ID
 
-Create a `Local.xcconfig` file in the repo root (it is gitignored):
+For command-line builds, create a `Local.xcconfig` file in the repo root (it is gitignored):
 
 ```
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
 ```
 
 Find your Team ID at [developer.apple.com/account](https://developer.apple.com/account) → Membership Details.  
-If you just want to run it without code signing, leave it blank — Xcode will prompt you to choose a team on first build.
+For builds inside Xcode, choose your team in the target's Signing & Capabilities settings. The project does not automatically load `Local.xcconfig`; command-line builds load it with `-xcconfig` below.
 
 #### 3. Build and run
 
@@ -79,13 +83,13 @@ Open `Tidy.xcodeproj` in Xcode, select the **Tidy** scheme with **My Mac** as de
 From the command line:
 
 ```sh
-xcodebuild -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' build
+xcodebuild -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' -xcconfig Local.xcconfig build
 ```
 
 Run unit tests:
 
 ```sh
-xcodebuild test -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' -only-testing:TidyTests
+xcodebuild test -project Tidy.xcodeproj -scheme Tidy -destination 'platform=macOS' -only-testing:TidyTests CODE_SIGNING_ALLOWED=NO
 ```
 
 ### Add an API key

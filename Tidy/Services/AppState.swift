@@ -5,15 +5,23 @@ import ServiceManagement
 
 @MainActor
 final class AppState: ObservableObject {
+    let textActionStore: TextActionStore
+    let textActionController: TextActionController
+    let selectedTextService: SelectedTextService
+    let fileTidyViewModel: FileTidyViewModel
+    @Published var hotkeyError: String?
     let clipboardService: ClipboardService
     let correctionLogStore: CorrectionLogStore
     let aiRequestLogStore: AIRequestLogStore
+    let productivityService: ProductivityService
+    let productivitySyncService: ProductivitySyncService
     let dataWorkspaceService: DataWorkspaceService
     let suggestionMonitor: SuggestionMonitor
     let jiraService: JiraService
     let asanaService: AsanaService
     let terminalService: TerminalService
     let unifiedNotificationService: UnifiedNotificationService
+    var onShowMainWindow: (() -> Void)?
     @Published var showOnboarding: Bool
     @Published private(set) var selectedGoals: Set<TidyGoal>
     @Published private(set) var credentialRevision = 0
@@ -57,10 +65,27 @@ final class AppState: ObservableObject {
                 rawValue: UserDefaults.standard.string(forKey: AppDefaults.dashboardSection) ?? ""
             ) ?? .home
         isSidebarCollapsed = UserDefaults.standard.bool(forKey: AppDefaults.sidebarCollapsed)
-        clipboardService = ClipboardService()
-        correctionLogStore = CorrectionLogStore()
-        aiRequestLogStore = AIRequestLogStore()
+        let historyDirectory = isRunningTests
+            ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TIDY_PREVIEW_HISTORY_DIRECTORY"]
+                  ?? NSTemporaryDirectory().appending("TidyHistory-\(UUID().uuidString)"))
+            : nil
+        clipboardService = ClipboardService(store: ClipboardStore(directory: historyDirectory))
+        correctionLogStore = CorrectionLogStore(directory: historyDirectory)
+        aiRequestLogStore = AIRequestLogStore(directory: historyDirectory)
+        textActionStore = TextActionStore(directory: historyDirectory)
+        selectedTextService = SelectedTextService(clipboard: clipboardService)
+        textActionController = TextActionController(store: textActionStore, selectionService: selectedTextService,
+                                                    logStore: aiRequestLogStore, corrections: correctionLogStore)
+        fileTidyViewModel = FileTidyViewModel(undoStore: FileTidyUndoLogStore(directory: historyDirectory))
         dataWorkspaceService = DataWorkspaceService(logStore: aiRequestLogStore)
+        productivityService = ProductivityService(
+            store: isRunningTests ? ProductivityStore(fileURL: nil) : .local(),
+            notifier: isRunningTests ? SilentProductivityNotifications() : LocalProductivityNotifications()
+        )
+        productivitySyncService = ProductivitySyncService(
+            workspace: productivityService,
+            directory: isRunningTests ? historyDirectory! : SecureLocalStorage.applicationSupportDirectory()
+        )
         grammarService = GrammarService(hud: hud, logStore: correctionLogStore, requestLogStore: aiRequestLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
         askAIController = AskAIController(requestLogStore: aiRequestLogStore)
@@ -68,7 +93,11 @@ final class AppState: ObservableObject {
         jiraService = JiraService()
         asanaService = AsanaService()
         terminalService = TerminalService()
-        unifiedNotificationService = UnifiedNotificationService(requestLogStore: aiRequestLogStore)
+        let previewCache = isRunningTests
+            ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TIDY_PREVIEW_NOTIFICATION_CACHE"]
+                  ?? NSTemporaryDirectory().appending("TidyNotifications-\(UUID().uuidString)"))
+            : nil
+        unifiedNotificationService = UnifiedNotificationService(requestLogStore: aiRequestLogStore, cacheDirectory: previewCache)
 
         hotkeyManager.onGrammar = { [weak self] in
             Task { @MainActor in self?.grammarService.tidySelectedText() }
@@ -97,11 +126,33 @@ final class AppState: ObservableObject {
             self?.suggestionMonitor.noteDismissed(text: original)
         }
 
-        start()
+        textActionController.captureToToday = { [weak self] text, kind, source in
+            self?.captureToToday(text, kind: kind, source: source) ?? false
+        }
+        textActionController.askAI = { [weak self] text in self?.askAIController.show(contextText: text) }
+        textActionController.manageActions = { [weak self] in self?.openTextActionSettings() }
+        paletteController.onAction = { [weak self] entry, actionID in self?.openTextActions(entry: entry, actionID: actionID) }
+        paletteController.onCapture = { [weak self] entry, kind in
+            self?.captureToToday(entry.content, kind: kind, source: entry.captureSource) ?? false
+        }
+        hotkeyManager.onTextActions = { [weak self] in Task { @MainActor in self?.textActionController.showSelection() } }
+        hotkeyManager.onCapture = { [weak self] in Task { @MainActor in self?.textActionController.showSelection(captureKind: .task) } }
+        hotkeyManager.onCustomAction = { [weak self] id in Task { @MainActor in self?.textActionController.showSelection(actionID: id) } }
+        textActionStore.$actions.dropFirst().sink { [weak self] _ in
+            Task { @MainActor in if !isRunningTests { self?.registerHotkeys() } }
+        }.store(in: &cancellables)
+
+        productivityService.onOpenWorkspace = { [weak self] in self?.openToday() }
+        if !isRunningTests { start() }
     }
 
     func start() {
         NSApp.setActivationPolicy(.regular)
+        if let icon = NSImage(named: "TidyLogo") {
+            NSApp.applicationIconImage = icon
+        }
+        productivityService.start()
+        productivitySyncService.start()
         clipboardService.start()
         suggestionMonitor.start()
         unifiedNotificationService.start()
@@ -118,7 +169,52 @@ final class AppState: ObservableObject {
         let grammar = Hotkey.parse(defaults.string(forKey: AppDefaults.grammarHotkey) ?? "", fallback: .grammarDefault)
         let clipboard = Hotkey.parse(defaults.string(forKey: AppDefaults.clipboardHotkey) ?? "", fallback: .clipboardDefault)
         let askAI = Hotkey.parse(defaults.string(forKey: AppDefaults.askAIHotkey) ?? "", fallback: .askAIDefault)
-        hotkeyManager.register(grammar: grammar, clipboard: clipboard, askAI: askAI)
+        let textActions = Hotkey.parse(defaults.string(forKey: AppDefaults.textActionsHotkey) ?? "", fallback: .textActionsDefault)
+        let capture = Hotkey.parse(defaults.string(forKey: AppDefaults.captureHotkey) ?? "", fallback: .captureDefault)
+        hotkeyManager.register(grammar: grammar, clipboard: clipboard, askAI: askAI, textActions: textActions, capture: capture, custom: textActionStore.actions)
+        hotkeyError = hotkeyManager.registrationErrors.isEmpty ? nil : hotkeyManager.registrationErrors.joined(separator: "\n")
+    }
+
+    func validateActionShortcut(_ action: TextAction) throws {
+        guard let raw = action.shortcut, !raw.isEmpty, let shortcut = Hotkey.validated(raw) else { return }
+        let defaults = UserDefaults.standard
+        let reserved = [AppDefaults.grammarHotkey, AppDefaults.clipboardHotkey, AppDefaults.askAIHotkey, AppDefaults.textActionsHotkey, AppDefaults.captureHotkey]
+            .compactMap { defaults.string(forKey: $0) }.compactMap(Hotkey.validated)
+        let others = textActionStore.actions.filter { $0.id != action.id }.compactMap(\.shortcut).compactMap(Hotkey.validated)
+        guard !(reserved + others).contains(where: { $0.keyCode == shortcut.keyCode && $0.carbonModifiers == shortcut.carbonModifiers }) else {
+            throw TextActionError.invalid("That shortcut is already assigned to another Tidy action.")
+        }
+    }
+
+    func openTextActions(entry: ClipboardEntry, actionID: String? = nil) {
+        textActionController.show(text: entry.content, source: entry.captureSource, actionID: actionID)
+    }
+
+    func openTextActionSettings() {
+        UserDefaults.standard.set("Text Actions", forKey: AppDefaults.settingsTab)
+        selectedDashboardSection = .settings
+        NSApp.activate()
+        onShowMainWindow?()
+    }
+
+    @discardableResult
+    func captureToToday(_ text: String, kind: ProductivityKind, source: CaptureSource = CaptureSource()) -> Bool {
+        let saved = productivityService.captureText(text, kind: kind, source: source)
+        hud.show(saved ? .success("Saved to Today") : .error(productivityService.errorMessage ?? "Could not save to Today"), autoDismissAfter: 2)
+        return saved
+    }
+
+    func openToday(capture kind: ProductivityKind? = nil) {
+        selectedDashboardSection = .today
+        productivityService.selectedSection = .today
+        productivityService.search = ""
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.title == "Tidy" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            onShowMainWindow?()
+        }
+        if let kind { productivityService.beginCapture(kind) }
     }
 
     func openPalette() {
@@ -257,7 +353,7 @@ final class AppState: ObservableObject {
     }
 
     var visibleDashboardSections: [DashboardSection] {
-        let alwaysVisible: Set<DashboardSection> = [.home, .data, .settings]
+        let alwaysVisible: Set<DashboardSection> = [.home, .today, .data, .settings]
         guard !selectedGoals.isEmpty else { return DashboardSection.allCases }
         let goalSections = selectedGoals.reduce(into: alwaysVisible) { result, goal in
             result.formUnion(goal.dashboardSections)
@@ -288,7 +384,10 @@ final class AppState: ObservableObject {
 
     func runWorkflow(_ workflow: DeveloperWorkflowID) {
         switch workflow {
-        case .startDay, .meetingPrep:
+        case .startDay:
+            openToday()
+            productivityService.editingDailyNote = productivityService.todayNote
+        case .meetingPrep:
             openUnifiedNotifications()
             Task { await unifiedNotificationService.refresh() }
         case .cleanProject:
@@ -296,18 +395,20 @@ final class AppState: ObservableObject {
         case .shareContext:
             openAskAI()
         case .wrapUp:
-            UserDefaults.standard.set("standup", forKey: AppDefaults.jiraWorkspaceMode)
-            openJira()
-            Task { await refreshJira() }
+            openToday()
+            productivityService.editingDailyNote = productivityService.todayNote
         }
     }
 
-    func clearAllLocalHistory() {
+    @discardableResult
+    func clearAllLocalHistory() -> Bool {
+        guard !fileTidyViewModel.isApplying else { return false }
         clipboardService.clear()
         correctionLogStore.clear()
         aiRequestLogStore.clear()
         unifiedNotificationService.clearCache()
-        FileTidyUndoLogStore().clear()
+        fileTidyViewModel.clearUndoHistory()
+        return true
     }
 
     func disconnectAllIntegrations() {

@@ -104,6 +104,7 @@ struct FileTidyProposal: Identifiable, Hashable {
     let usagePattern: String
     let isRecommendedByDefault: Bool
     let duplicateOf: URL?
+    var projectRootURL: URL? = nil
 
     var displaySize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
@@ -133,6 +134,8 @@ struct FileTidyScanResult {
     let dateGroups: [FileTidyGroupSummary]
     let projectGroups: [FileTidyGroupSummary]
     let usageGroups: [FileTidyGroupSummary]
+    var developerProjects: [DeveloperProjectSummary] = []
+    var scanWarnings: [String] = []
 
     var totalSize: Int64 {
         records.reduce(0) { $0 + $1.size }

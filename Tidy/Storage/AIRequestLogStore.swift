@@ -5,8 +5,9 @@ final class AIRequestLogStore: ObservableObject {
     @Published private(set) var entries: [AIRequestLogEntry] = []
     private let url: URL
 
-    init() {
-        let directory = SecureLocalStorage.applicationSupportDirectory()
+    init(directory: URL? = nil) {
+        let directory = directory ?? SecureLocalStorage.applicationSupportDirectory()
+        SecureLocalStorage.ensureOwnerOnlyDirectory(at: directory)
         url = directory.appendingPathComponent("ai-requests.json")
         load()
     }

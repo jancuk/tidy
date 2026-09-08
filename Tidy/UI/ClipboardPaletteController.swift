@@ -9,6 +9,8 @@ final class PaletteSelectionState: ObservableObject {
 
 @MainActor
 final class ClipboardPaletteController {
+    var onAction: ((ClipboardEntry, String?) -> Void)?
+    var onCapture: ((ClipboardEntry, ProductivityKind) -> Bool)?
     private let clipboardService: ClipboardService
     private let selectionState = PaletteSelectionState()
     private var panel: NSPanel?
@@ -60,7 +62,9 @@ final class ClipboardPaletteController {
                 paste: { [weak self] in self?.pasteSelected() },
                 copy: { [weak self] in self?.copySelected() },
                 delete: { [weak self] in self?.deleteSelected() },
-                hide: { [weak self] in self?.hide() }
+                hide: { [weak self] in self?.hide() },
+                transform: { [weak self] entry, actionID in self?.transform(entry, actionID: actionID) },
+                capture: { [weak self] entry, kind in self?.capture(entry, kind: kind) }
             )
             panel.contentView = NSHostingView(rootView: rootView)
             self.panel = panel
@@ -80,13 +84,29 @@ final class ClipboardPaletteController {
         }
     }
 
+    private func transform(_ entry: ClipboardEntry, actionID: String?) {
+        hide()
+        onAction?(entry, actionID)
+    }
+
+    private func capture(_ entry: ClipboardEntry, kind: ProductivityKind) {
+        if onCapture?(entry, kind) == true { hide() }
+    }
+
     private func pasteSelected() {
         guard let entry = selectedEntry else { return }
+        guard Permissions.requestAccessibilityIfNeeded(), let app = previouslyFocusedApp,
+              !app.isTerminated, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            copySelected()
+            clipboardService.errorMessage = "Copied as plain text. Return to your app and paste manually."
+            return
+        }
         hide()
-        previouslyFocusedApp?.activate(options: [])
+        app.activate(options: [])
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(entry.content, forType: .string)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return }
             KeyboardSimulator.paste()
         }
     }
@@ -137,6 +157,25 @@ final class ClipboardPaletteController {
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 self.pasteSelected()
                 return nil
+            case kVK_ANSI_P where commandPressed:
+                if let entry = self.selectedEntry { self.clipboardService.togglePin(entry) }
+                return nil
+            case kVK_ANSI_F where commandPressed && event.modifierFlags.contains(.shift):
+                self.clipboardService.pinnedOnly.toggle()
+                self.selectedIndex = 0
+                return nil
+            case kVK_ANSI_R where commandPressed:
+                if let entry = self.selectedEntry { self.transform(entry, actionID: "tone") }
+                return nil
+            case kVK_ANSI_J where commandPressed && event.modifierFlags.contains(.shift):
+                if let entry = self.selectedEntry { self.transform(entry, actionID: "json") }
+                return nil
+            case kVK_ANSI_L where commandPressed && event.modifierFlags.contains(.shift):
+                if let entry = self.selectedEntry { self.transform(entry, actionID: "links") }
+                return nil
+            case kVK_ANSI_T where commandPressed:
+                if let entry = self.selectedEntry { self.capture(entry, kind: event.modifierFlags.contains(.shift) ? .note : .task) }
+                return nil
             case kVK_ANSI_C where commandPressed:
                 self.copySelected()
                 return nil
@@ -157,6 +196,8 @@ struct ClipboardPaletteView: View {
     let copy: () -> Void
     let delete: () -> Void
     let hide: () -> Void
+    let transform: (ClipboardEntry, String?) -> Void
+    let capture: (ClipboardEntry, ProductivityKind) -> Void
     @FocusState private var searchFocused: Bool
 
     private var selectedIndex: Int { selectionState.selectedIndex }
@@ -176,6 +217,8 @@ struct ClipboardPaletteView: View {
                 .padding(.horizontal, 18)
                 .frame(height: 64)
 
+                ClipboardFiltersView(service: clipboardService).padding(.horizontal, 18).padding(.bottom, 10)
+                if let error = clipboardService.errorMessage { Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal) }
                 Divider()
 
                 if clipboardService.entries.isEmpty {
@@ -192,10 +235,11 @@ struct ClipboardPaletteView: View {
                                 ForEach(Array(clipboardService.entries.enumerated()), id: \.element.id) { index, entry in
                                     ClipboardRow(entry: entry, isSelected: index == selectedIndex)
                                         .id(entry.id)
-                                        .onTapGesture {
+                                        .onTapGesture(count: 2) {
                                             selectionState.selectedIndex = index
                                             paste()
                                         }
+                                        .onTapGesture { selectionState.selectedIndex = index }
                                 }
                             }
                         }
@@ -209,9 +253,12 @@ struct ClipboardPaletteView: View {
                 Divider()
 
                 HStack(spacing: 16) {
-                    Label("Paste", systemImage: "return")
-                    Label("Copy", systemImage: "command")
-                    Label("Delete", systemImage: "delete.left")
+                    Text("↩ Plain paste · ⌘P Pin · ⌘R Rewrite · ⌘T Task")
+                    if clipboardService.entries.indices.contains(selectedIndex) {
+                        let entry = clipboardService.entries[selectedIndex]
+                        ClipboardEntryActions(entry: entry, service: clipboardService,
+                                              transform: { transform(entry, $0) }, capture: { capture(entry, $0) })
+                    }
                     Spacer()
                     Text("\(clipboardService.entries.count) items")
                         .foregroundStyle(.secondary)
@@ -223,8 +270,11 @@ struct ClipboardPaletteView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onAppear {
-            searchFocused = true
+        .onAppear { searchFocused = true }
+        .onChange(of: clipboardService.query) { _, _ in selectionState.selectedIndex = 0 }
+        .onChange(of: clipboardService.entries) { oldEntries, entries in
+            let selectedID = oldEntries.indices.contains(selectionState.selectedIndex) ? oldEntries[selectionState.selectedIndex].id : nil
+            selectionState.selectedIndex = entries.firstIndex(where: { $0.id == selectedID }) ?? min(selectionState.selectedIndex, max(0, entries.count - 1))
         }
     }
 }
@@ -254,6 +304,8 @@ private struct ClipboardRow: View {
             }
 
             Spacer()
+            if entry.isPinned { Image(systemName: "pin.fill").foregroundStyle(.orange) }
+            if !entry.collection.isEmpty { Text(entry.collection).font(.caption).foregroundStyle(.secondary) }
         }
         .padding(.horizontal, 14)
         .frame(height: 62)

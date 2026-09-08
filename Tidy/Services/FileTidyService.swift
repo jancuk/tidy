@@ -5,6 +5,7 @@ enum FileTidyError: LocalizedError {
     case folderMissing
     case moveFailed(String)
     case undoBlocked(String)
+    case partialApply(String, [FileTidyAppliedMove])
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum FileTidyError: LocalizedError {
         case .moveFailed(let message):
             message
         case .undoBlocked(let message):
+            message
+        case .partialApply(let message, _):
             message
         }
     }
@@ -33,23 +36,37 @@ final class FileTidyService {
     }
 
     func scan(rootURL: URL) throws -> FileTidyScanResult {
+        let rootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw FileTidyError.folderMissing
         }
 
+        let projectScan = try DeveloperProjectScanner(fileManager: fileManager).scan(root: rootURL)
         let children = try fileManager.contentsOfDirectory(
             at: rootURL,
             includingPropertiesForKeys: resourceKeys,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsPackageDescendants]
         )
-        let records = try children
-            .filter { $0.lastPathComponent != ".DS_Store" }
-            .map { try record(for: $0) }
-            .sorted { lhs, rhs in
-                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-        let proposals = buildProposals(for: records, rootURL: rootURL)
+        var records: [FileTidyRecord] = []
+        for url in children {
+            try Task.checkCancellation()
+            guard !DeveloperProjectScanner.excludedNames.contains(url.lastPathComponent),
+                  !url.lastPathComponent.hasPrefix(".") || isBuildArtifact(url),
+                  (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { continue }
+            records.append(try record(for: url))
+        }
+        records.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        try Task.checkCancellation()
+        let projectPaths = projectScan.projects.map { $0.url.standardizedFileURL.path }
+        let generatedPaths = Set(projectScan.proposals.map { $0.sourceURL.standardizedFileURL.path })
+        let genericRecords: [FileTidyRecord] = records.filter { record in
+            let path = record.url.standardizedFileURL.path
+            let containsProject = projectPaths.contains { $0 == path || $0.hasPrefix(path + "/") }
+            return !containsProject && !generatedPaths.contains(path)
+        }
+        let generic = DeveloperProjectScanner.isProject(rootURL, manager: fileManager) ? [] : buildProposals(for: genericRecords, rootURL: rootURL)
+        let proposals = generic + projectScan.proposals
 
         return FileTidyScanResult(
             rootURL: rootURL,
@@ -59,52 +76,74 @@ final class FileTidyService {
             typeGroups: groups(records, by: { $0.category.title }),
             dateGroups: groups(records, by: { $0.dateGroup }),
             projectGroups: groups(records, by: { $0.projectHint ?? "No project hint" }),
-            usageGroups: groups(records, by: { $0.usagePattern })
+            usageGroups: groups(records, by: { $0.usagePattern }),
+            developerProjects: projectScan.projects,
+            scanWarnings: projectScan.warnings
         )
     }
 
-    func apply(_ proposals: [FileTidyProposal], rootURL: URL) throws -> [FileTidyAppliedMove] {
-        var applied: [FileTidyAppliedMove] = []
-
+    func apply(_ proposals: [FileTidyProposal], rootURL: URL,
+               journal: (([FileTidyAppliedMove]) throws -> Void)? = nil) throws -> [FileTidyAppliedMove] {
+        var sourcePaths = Set<String>()
         for proposal in proposals {
-            guard isContained(proposal.sourceURL, in: rootURL),
-                  isContained(proposal.destinationURL, in: rootURL) else {
-                throw FileTidyError.moveFailed(
-                    "Refusing to move \(proposal.fileName) outside the selected folder."
-                )
+            guard isContained(proposal.sourceURL, in: rootURL), isContained(proposal.destinationURL, in: rootURL),
+                  !isContained(proposal.destinationURL, in: proposal.sourceURL),
+                  canonicalPath(for: proposal.sourceURL) != canonicalPath(for: proposal.destinationURL) else {
+                throw FileTidyError.moveFailed("Refusing an invalid move for \(proposal.fileName). Rescan the selected folder.")
             }
-            guard fileManager.fileExists(atPath: proposal.sourcePath) else { continue }
-            do {
-                let finalDestination = uniqueDestination(for: proposal.destinationURL)
-                guard isContained(finalDestination, in: rootURL) else {
-                    throw FileTidyError.moveFailed(
-                        "Refusing to move \(proposal.fileName) outside the selected folder."
-                    )
+            let path = canonicalPath(for: proposal.sourceURL)
+            guard sourcePaths.insert(path).inserted else { throw FileTidyError.moveFailed("Choose only one destination for \(proposal.fileName).") }
+            if let project = proposal.projectRootURL {
+                guard (canonicalPath(for: project) == canonicalPath(for: rootURL) || isContained(project, in: rootURL)),
+                      isContained(proposal.sourceURL, in: project) else { throw FileTidyError.moveFailed("The project path changed. Rescan before moving files.") }
+                guard DeveloperProjectScanner.containsTrackedFiles(proposal.sourceURL, project: project) == false else {
+                    throw FileTidyError.moveFailed("\(proposal.fileName) contains Git-tracked files or Git could not be checked. Keep it in place and inspect it manually.")
                 }
-                try fileManager.createDirectory(
-                    at: finalDestination.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try fileManager.moveItem(at: proposal.sourceURL, to: finalDestination)
-                applied.append(FileTidyAppliedMove(
-                    id: proposal.id,
-                    action: proposal.action,
-                    sourcePath: proposal.sourcePath,
-                    destinationPath: proposal.destinationPath,
-                    finalDestinationPath: finalDestination.path,
-                    fileName: proposal.fileName,
-                    movedAt: Date()
-                ))
-            } catch {
-                throw FileTidyError.moveFailed("Could not move \(proposal.fileName): \(error.localizedDescription)")
+                if proposal.risk != .high && DeveloperProjectScanner.gitState(at: project) != .clean {
+                    throw FileTidyError.moveFailed("Git status changed for \(project.lastPathComponent). Rescan and review the new warning first.")
+                }
             }
         }
-
+        for path in sourcePaths {
+            guard !sourcePaths.contains(where: { $0 != path && path.hasPrefix($0 + "/") }) else {
+                throw FileTidyError.moveFailed("Choose a folder or its contents, not both in the same batch.")
+            }
+        }
+        var applied: [FileTidyAppliedMove] = []
+        for proposal in proposals {
+            guard fileManager.fileExists(atPath: proposal.sourcePath) else { continue }
+            do {
+                let destination = uniqueDestination(for: proposal.destinationURL)
+                guard isContained(proposal.sourceURL, in: rootURL), isContained(destination, in: rootURL) else {
+                    throw FileTidyError.moveFailed("A path changed since scanning. Rescan before moving files.")
+                }
+                let move = FileTidyAppliedMove(id: proposal.id, action: proposal.action, sourcePath: proposal.sourcePath,
+                                              destinationPath: proposal.destinationPath, finalDestinationPath: destination.path,
+                                              fileName: proposal.fileName, movedAt: Date())
+                // Persist recovery paths before a move so interrupted batches remain recoverable.
+                try journal?(applied + [move])
+                try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fileManager.moveItem(at: proposal.sourceURL, to: destination)
+                applied.append(move)
+            } catch {
+                throw FileTidyError.partialApply("Could not move \(proposal.fileName): \(error.localizedDescription). Earlier moves remain available in the undo log.", applied)
+            }
+        }
         return applied
     }
 
     func undo(_ session: FileTidyUndoSession) throws {
         let rootURL = URL(fileURLWithPath: session.rootPath, isDirectory: true)
+        for move in session.moves {
+            let current = URL(fileURLWithPath: move.finalDestinationPath)
+            let original = URL(fileURLWithPath: move.sourcePath)
+            guard isContained(current, in: rootURL), isContained(original, in: rootURL) else {
+                throw FileTidyError.undoBlocked("A recovery path is outside the selected folder.")
+            }
+            if fileManager.fileExists(atPath: current.path) && fileManager.fileExists(atPath: original.path) {
+                throw FileTidyError.undoBlocked("Cannot undo \(move.fileName) because the original path is occupied. Nothing was overwritten.")
+            }
+        }
         for move in session.moves.reversed() {
             let currentURL = URL(fileURLWithPath: move.finalDestinationPath)
             let originalURL = URL(fileURLWithPath: move.sourcePath)
@@ -485,6 +524,7 @@ final class FileTidyService {
 
         var hasher = SHA256()
         while autoreleasepool(invoking: {
+            guard !Task.isCancelled else { return false }
             let data = handle.readData(ofLength: 1_048_576)
             guard !data.isEmpty else { return false }
             hasher.update(data: data)
@@ -497,16 +537,16 @@ final class FileTidyService {
     private func directorySize(_ url: URL) -> Int64 {
         guard let enumerator = fileManager.enumerator(
             at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey],
+            options: []
         ) else {
             return 0
         }
 
         return enumerator.reduce(Int64(0)) { total, item in
-            guard let fileURL = item as? URL,
-                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .totalFileAllocatedSizeKey]),
-                  values.isRegularFile == true else {
+            guard !Task.isCancelled, let fileURL = item as? URL,
+                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey]),
+                  values.isSymbolicLink != true, values.isRegularFile == true else {
                 return total
             }
             return total + Int64(values.fileSize ?? values.totalFileAllocatedSize ?? 0)

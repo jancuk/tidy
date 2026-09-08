@@ -88,13 +88,13 @@ struct PrivacyCenterView: View {
                     Button("Clear local history", role: .destructive) {
                         confirmation = .localHistory
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
 
                     Button("Remove credentials", role: .destructive) {
                         confirmation = .credentials
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
 
                     Spacer()
@@ -102,7 +102,7 @@ struct PrivacyCenterView: View {
                     Button("Personalize Tidy") {
                         appState.presentOnboarding()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
                 }
             }
@@ -124,8 +124,7 @@ struct PrivacyCenterView: View {
         ) {
             if confirmation == .localHistory {
                 Button("Clear all local history", role: .destructive) {
-                    appState.clearAllLocalHistory()
-                    statusMessage = "Local history was cleared."
+                    statusMessage = appState.clearAllLocalHistory() ? "Local history was cleared." : "Wait for File Tidy to finish before clearing recovery history."
                     reloadInventory()
                 }
             } else if confirmation == .credentials {
@@ -178,6 +177,7 @@ struct PrivacyCenterView: View {
 
     private func storageIcon(for id: String) -> String {
         switch id {
+        case "productivity": "sun.max"
         case "clipboard": "doc.on.clipboard"
         case "corrections": "checkmark.rectangle"
         case "ai-requests": "network"
@@ -201,7 +201,7 @@ private enum PrivacyConfirmation: Equatable {
     var message: String {
         switch self {
         case .localHistory:
-            "This clears clipboard history, corrections, AI diagnostics, notification summaries, and File Tidy undo records. It does not move or delete your files."
+            "This clears clipboard history, corrections, AI diagnostics, notification summaries, and File Tidy undo records. It does not move or delete your files. Your Today notes, tasks, and routines are kept."
         case .credentials:
             "This removes provider keys and Jira, Asana, and MCP credentials from Keychain, then disconnects those integrations."
         }
@@ -211,7 +211,7 @@ private enum PrivacyConfirmation: Equatable {
 private extension View {
     func cardStyle() -> some View {
         background(
-            Color(NSColor.controlBackgroundColor),
+            WorkspaceDesign.surface,
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .overlay(

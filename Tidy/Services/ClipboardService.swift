@@ -8,9 +8,32 @@ final class ClipboardService: ObservableObject {
         didSet { reload() }
     }
 
+    @Published var pinnedOnly = false { didSet { reload() } }
+    @Published var selectedCollection: String? { didSet { reload() } }
+    @Published private(set) var collections: [String] = []
+    @Published var errorMessage: String?
+
+    func togglePin(_ entry: ClipboardEntry) { update(entry, pinned: !entry.isPinned, collection: entry.isPinned ? "" : entry.collection) }
+    func organize(_ entry: ClipboardEntry, collection: String) { update(entry, pinned: true, collection: collection) }
+
+    private func update(_ entry: ClipboardEntry, pinned: Bool, collection: String) {
+        guard store.setMetadata(id: entry.id, pinned: pinned, collection: collection) else {
+            errorMessage = "Could not save this favorite. Please try again."; return
+        }
+        errorMessage = nil
+        reload()
+    }
+
     private let store: ClipboardStore
     private var timer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
+    private var captureSuspensions = 0
+
+    func suspendCapture() { captureSuspensions += 1 }
+    func resumeCapture() {
+        captureSuspensions = max(0, captureSuspensions - 1)
+        lastChangeCount = NSPasteboard.general.changeCount
+    }
     private let deniedBundleIDs: Set<String> = [
         "com.1password.1password",
         "com.1password.1password7",
@@ -42,7 +65,8 @@ final class ClipboardService: ObservableObject {
     }
 
     func reload() {
-        entries = store.entries(matching: query)
+        entries = store.entries(matching: query, pinnedOnly: pinnedOnly, collection: selectedCollection)
+        collections = store.collections()
     }
 
     func delete(_ entry: ClipboardEntry) {
@@ -61,6 +85,7 @@ final class ClipboardService: ObservableObject {
     }
 
     private func pollPasteboard() {
+        guard captureSuspensions == 0 else { return }
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount

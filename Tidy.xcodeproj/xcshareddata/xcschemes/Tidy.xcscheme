@@ -40,6 +40,15 @@
                ReferencedContainer = "container:Tidy.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7C04F71F2FBA057300D2DD28"
+               BuildableName = "TidyUITests.xctest"
+               BlueprintName = "TidyUITests"
+               ReferencedContainer = "container:Tidy.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

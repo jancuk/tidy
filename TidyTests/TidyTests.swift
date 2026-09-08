@@ -652,7 +652,7 @@ struct TidyTests {
     }
 
     @Test func dashboardSectionShortcutsFollowSidebarOrder() {
-        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1w23d4567n890"))
+        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1tw23d4567n890"))
         #expect(DashboardSection.notifications.shortcutLabel == "⌘⇧N")
         #expect(DashboardSection.asana.shortcutLabel == "⌘9")
         #expect(DashboardSection.settings.shortcutLabel == "⌘0")
@@ -1712,7 +1712,7 @@ struct TidyTests {
         }
         #expect(
             DataWorkspaceError.needsMultipleSources(.combine).localizedDescription ==
-                "Combine needs at least two CSV files."
+                "Append needs at least two CSV files."
         )
         #expect(
             DataWorkspaceError.unsafeQuery("file access").localizedDescription ==
@@ -1765,14 +1765,14 @@ struct TidyTests {
         let engine = DuckDBDataEngine()
         let source = try await engine.registerCSV(csv, id: UUID(), tableName: "orders")
         let result = try await engine.query(
-            "SELECT \"region\", SUM(\"amount\") AS \"total\" FROM \"orders\" GROUP BY \"region\" ORDER BY \"region\"",
+            "SELECT \"region\", SUM(CAST(\"amount\" AS DOUBLE)) AS \"total\" FROM \"orders\" GROUP BY \"region\" ORDER BY \"region\"",
             limit: 20
         )
 
         #expect(source.rowCount == 3)
         #expect(source.columns.map(\.name) == ["id", "region", "amount"])
         #expect(result.columns == ["region", "total"])
-        #expect(result.rows == [["North", "35"], ["South", "15"]])
+        #expect(result.rows == [["North", "35.0"], ["South", "15.0"]])
     }
 
     private struct StubGrammarProvider: GrammarProvider {

@@ -94,6 +94,10 @@ fi
 # Clear quarantine so macOS doesn't block an ad-hoc signed build
 xattr -dr com.apple.quarantine "$INSTALL_DIR/$APP_NAME" 2>/dev/null || true
 
+touch "$INSTALL_DIR/$APP_NAME"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "$INSTALL_DIR/$APP_NAME"
+
 # Launch
 echo "==> Launching Tidy…"
 open "$INSTALL_DIR/$APP_NAME"

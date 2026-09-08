@@ -5,450 +5,254 @@ struct NotificationCenterView: View {
     @EnvironmentObject private var notificationService: UnifiedNotificationService
     @State private var expandedSources: Set<MCPIntegrationSource> = []
     @State private var selectedSource: MCPIntegrationSource?
-
-    private let overviewColumns = [
-        GridItem(.adaptive(minimum: 210), spacing: 12)
-    ]
+    @State private var search = ""
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    connectionBanner
-                    briefingCard
-                    sourceOverview
-                    sourceFilter
-
-                    ForEach(visibleSources) { source in
-                        sourceCard(source)
-                    }
-                }
-                .padding(20)
-                .frame(maxWidth: 980)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-        }
-        .background(Color(NSColor.windowBackgroundColor))
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Daily Briefing")
-                    .font(.system(size: 18, weight: .bold))
-                Text("A low-noise engineering summary from Slack, Gmail, and Calendar")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-
-            Spacer()
-
-            Text(
-                Date(),
-                format: .dateTime.weekday(.wide).month(.abbreviated).day()
-            )
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-
-            Button {
-                Task { await notificationService.refresh() }
-            } label: {
-                if notificationService.isRefreshing {
-                    HStack(spacing: 6) {
+            WorkspaceHeader(title: "Notifications", subtitle: "Your work, in perspective.") {
+                Button { appState.openMCPSettings() } label: { Image(systemName: "slider.horizontal.3") }
+                    .accessibilityLabel("Integration settings").help("Integration settings")
+                Button { Task { await notificationService.refresh() } } label: {
+                    if notificationService.isRefreshing {
                         ProgressView().controlSize(.small)
-                        Text("Refreshing…")
+                    } else { Label("Refresh", systemImage: "arrow.clockwise") }
+                }.disabled(notificationService.isRefreshing)
+            }
+            navigation
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    if search.isEmpty && selectedSource == nil { introduction }
+                    connectionState
+                    if selectedSource == nil && search.isEmpty { briefing }
+                    HStack {
+                        Text(search.isEmpty ? (selectedSource?.title ?? "Across your sources") : "Search results")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        Spacer()
+                        Label("Read-only", systemImage: "eye").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
-                } else {
-                    Label("Refresh brief", systemImage: "arrow.clockwise")
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(notificationService.isRefreshing)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
-    }
-
-    private var connectionBanner: some View {
-        HStack(spacing: 11) {
-            Image(systemName: connectionIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(connectionColor)
-                .frame(width: 30, height: 30)
-                .background(connectionColor.opacity(0.12), in: Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(notificationService.connectionStatus)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(connectionDetail)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-
-            Spacer()
-
-            Text("\(notificationService.digests.count)/3 sources ready")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-
-            Button("Integration settings") {
-                appState.openMCPSettings()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            Color(NSColor.controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)
-        )
-    }
-
-    private var briefingCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("ENGINEER BRIEF", systemImage: "sparkles")
-                    .font(.system(size: 10, weight: .bold))
-                    .kerning(0.7)
-                    .foregroundStyle(Color.accentColor)
-
-                Spacer()
-
-                if let generatedAt = notificationService.briefing?.generatedAt {
-                    Text("Generated \(generatedAt, style: .relative)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                }
-            }
-
-            if let briefing = notificationService.briefing {
-                Text(.init(briefing.summary))
-                    .font(.system(size: 13))
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if notificationService.isRefreshing {
-                HStack(spacing: 9) {
-                    ProgressView().controlSize(.small)
-                    Text("Building your engineering brief…")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Your engineering day, summarized")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("Refresh to surface urgent replies, blockers, decisions, and meeting preparation.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                }
-            }
-        }
-        .padding(18)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.accentColor.opacity(0.12),
-                    Color(NSColor.controlBackgroundColor)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.22), lineWidth: 0.8)
-        )
-    }
-
-    private var sourceOverview: some View {
-        LazyVGrid(columns: overviewColumns, spacing: 12) {
-            ForEach(UnifiedNotificationService.notificationSources) { source in
-                sourceOverviewTile(source)
-            }
-        }
-    }
-
-    private func sourceOverviewTile(_ source: MCPIntegrationSource) -> some View {
-        let hasDigest = notificationService.digests.contains { $0.source == source }
-        let hasError = notificationService.sourceErrors[source] != nil
-        let stateText = hasDigest
-            ? "Ready"
-            : (hasError ? "Needs attention" : (notificationService.isRefreshing ? "Loading" : "Waiting"))
-        let stateColor: Color = hasDigest ? .green : (hasError ? .orange : .secondary)
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                selectedSource = selectedSource == source ? nil : source
-            }
-        } label: {
-            HStack(spacing: 11) {
-                Image(systemName: source.notificationSystemImage)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(tint(for: source))
-                    .frame(width: 34, height: 34)
-                    .background(
-                        tint(for: source).opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(source.title)
-                        .font(.system(size: 12, weight: .semibold))
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(stateColor)
-                            .frame(width: 6, height: 6)
-                        Text(stateText)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                    if visibleSources.isEmpty {
+                        WorkspaceEmptyState(title: "No matching updates", detail: "Try another phrase or clear your search.", icon: "magnifyingglass")
                     }
+                    ForEach(visibleSources) { source in sourceCard(source) }
                 }
-
-                Spacer()
+                .padding(.horizontal, 32).padding(.vertical, 30)
+                .frame(maxWidth: 930).frame(maxWidth: .infinity)
             }
-            .padding(12)
-            .background(
-                selectedSource == source
-                    ? Color.accentColor.opacity(0.10)
-                    : Color(NSColor.controlBackgroundColor),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        selectedSource == source
-                            ? Color.accentColor.opacity(0.55)
-                            : Color(NSColor.separatorColor).opacity(0.42),
-                        lineWidth: selectedSource == source ? 1 : 0.5
-                    )
-            )
-        }
-        .buttonStyle(.plain)
+        }.background(WorkspaceDesign.canvas)
     }
 
-    private var sourceFilter: some View {
+    private var navigation: some View {
         HStack(spacing: 7) {
-            Text("Source detail")
-                .font(.system(size: 12, weight: .bold))
-
-            Spacer()
-
-            filterButton("All", source: nil)
+            filterButton("Briefing", source: nil)
             ForEach(UnifiedNotificationService.notificationSources) { source in
-                filterButton(source.title, source: source)
+                filterButton(source == .googleCalendar ? "Calendar" : source.title, source: source)
             }
-        }
-        .padding(.top, 4)
+            Spacer(minLength: 12)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search updates", text: $search).textFieldStyle(.plain)
+                    .accessibilityLabel("Search notification summaries")
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).accessibilityLabel("Clear notification search")
+                }
+            }.font(.system(size: 12)).padding(9).frame(width: 190)
+                .background(WorkspaceDesign.inset, in: RoundedRectangle(cornerRadius: 9))
+        }.padding(.horizontal, 28).padding(.vertical, 12)
+            .overlay(alignment: .bottom) { WorkspaceDesign.border.frame(height: 1) }
     }
 
-    private func filterButton(
-        _ title: String,
-        source: MCPIntegrationSource?
-    ) -> some View {
-        let isSelected = selectedSource == source
-        return Button(title) {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                selectedSource = source
-            }
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-        .foregroundStyle(
-            isSelected ? Color.white : Color(NSColor.secondaryLabelColor)
-        )
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            isSelected ? Color.accentColor : Color(NSColor.controlBackgroundColor),
-            in: Capsule()
-        )
-        .overlay(
-            Capsule()
-                .stroke(Color(NSColor.separatorColor).opacity(isSelected ? 0 : 0.5), lineWidth: 0.5)
-        )
+    private func filterButton(_ title: String, source: MCPIntegrationSource?) -> some View {
+        Button { selectedSource = source } label: {
+            HStack(spacing: 6) {
+                if let source { Image(systemName: source.notificationSystemImage) }
+                Text(title)
+                if let source, notificationService.sourceErrors[source] != nil {
+                    Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                }
+            }.font(.system(size: 12, weight: selectedSource == source ? .semibold : .regular))
+                .foregroundStyle(selectedSource == source ? Color.primary : Color.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(selectedSource == source ? WorkspaceDesign.inset : .clear, in: Capsule())
+        }.buttonStyle(.plain).accessibilityAddTraits(selectedSource == source ? .isSelected : [])
     }
 
-    @ViewBuilder
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+            Text("A clearer view of your day.").font(.system(size: 32, design: .serif))
+            Text("Catch up on conversations, replies, and the meetings ahead.")
+                .font(.system(size: 14)).foregroundStyle(.secondary)
+        }.padding(.top, 4)
+    }
+
+    private var connectionState: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: notificationService.sourceErrors.isEmpty ? "clock" : "exclamationmark.circle")
+                .foregroundStyle(notificationService.sourceErrors.isEmpty ? Color.secondary : Color.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(connectionTitle).font(.system(size: 12, weight: .medium))
+                if let date = notificationService.lastUpdatedAt {
+                    Text("Last refresh: \(date.formatted(date: .abbreviated, time: .shortened)). Saved summaries may have changed at the source.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                } else {
+                    Text("Connect your sources in settings, then refresh when you're ready.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if notificationService.digests.isEmpty {
+                Button("Connect sources") { appState.openMCPSettings() }.buttonStyle(WorkspaceButtonStyle())
+            }
+        }.padding(14).background(WorkspaceDesign.inset, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var connectionTitle: String {
+        if notificationService.isRefreshing { return "Checking your sources…" }
+        if !notificationService.sourceErrors.isEmpty { return "Some sources couldn't refresh. Check the details below." }
+        if !notificationService.digests.isEmpty && !notificationService.connectionStatus.hasPrefix("Connected") {
+            return "Showing saved summaries · connection not checked this session"
+        }
+        return notificationService.connectionStatus
+    }
+
+    private var briefing: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 9) {
+                Image("TidyLogo").resizable().frame(width: 26, height: 26)
+                Text("Your briefing").font(.system(size: 14, weight: .semibold))
+                Spacer()
+                if let date = notificationService.briefing?.generatedAt {
+                    Text(date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            if notificationService.isRefreshing && notificationService.briefing == nil {
+                HStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text("Putting the pieces together…").font(.system(size: 14)).foregroundStyle(.secondary)
+                }.padding(.vertical, 22)
+            } else if let brief = notificationService.briefing, !NotificationReadingContent.containsSourceData(brief.summary) {
+                NotificationMarkdownView(text: brief.summary)
+            } else if notificationService.briefing != nil {
+                Text("This saved briefing needs a fresh summary.").font(.system(size: 19, design: .serif))
+                Text("Some source data couldn't be summarized cleanly. Read the available source summaries below, or refresh to try again.")
+                    .font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(5)
+            } else {
+                Text("The important things, in one place.").font(.system(size: 24, design: .serif))
+                Text("Your briefing brings together source updates so you can decide what deserves your attention. Refreshing reads your sources without posting messages or changing tasks.")
+                    .font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(5)
+            }
+        }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
+            .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(WorkspaceDesign.border))
+    }
+
     private func sourceCard(_ source: MCPIntegrationSource) -> some View {
         let digest = notificationService.digests.first { $0.source == source }
         let error = notificationService.sourceErrors[source]
-
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 11) {
-                Image(systemName: source.notificationSystemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint(for: source))
-                    .frame(width: 36, height: 36)
-                    .background(
-                        tint(for: source).opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(source.title)
-                        .font(.system(size: 14, weight: .bold))
-                    Text(source.notificationSubtitle)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        let readable = digest.flatMap(NotificationReadingContent.readableSummary)
+        return VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: source.notificationSystemImage).font(.system(size: 17))
+                    .foregroundStyle(tint(source)).frame(width: 40, height: 40)
+                    .background(tint(source).opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(source.title).font(.system(size: 14, weight: .semibold))
+                    Text(source.notificationSubtitle).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-
                 Spacer()
-
-                if let digest {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Updated \(digest.fetchedAt, style: .relative)")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                        Text(digest.toolName)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(Color(NSColor.tertiaryLabelColor))
-                    }
-                }
-
-                if let digest, !digest.rawPreview.isEmpty {
-                    Button {
-                        if expandedSources.contains(source) {
-                            expandedSources.remove(source)
-                        } else {
-                            expandedSources.insert(source)
-                        }
-                    } label: {
-                        Image(
-                            systemName: expandedSources.contains(source)
-                                ? "chevron.up"
-                                : "chevron.down"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    .help(expandedSources.contains(source) ? "Hide source data" : "Show source data")
-                }
+                Text(error != nil ? "Refresh failed" : notificationService.isRefreshing ? "Refreshing…" : digest != nil ? "Saved summary" : "Not loaded")
+                    .font(.system(size: 11)).foregroundStyle(error != nil ? Color.orange : Color.secondary)
             }
-
-            if let digest {
-                Text(.init(digest.summary))
-                    .font(.system(size: 12))
-                    .lineSpacing(2)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if expandedSources.contains(source) {
-                    Divider().opacity(0.45)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("SOURCE PREVIEW")
-                            .font(.system(size: 9, weight: .bold))
-                            .kerning(0.6)
-                            .foregroundStyle(Color(NSColor.tertiaryLabelColor))
-                        Text(digest.rawPreview)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            } else if let error {
-                HStack(alignment: .top, spacing: 9) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color.orange)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("This source needs attention")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text(error)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                            .textSelection(.enabled)
-                        Button("Review integration settings") {
-                            appState.openMCPSettings()
-                        }
-                        .buttonStyle(.link)
-                        .font(.system(size: 11))
-                    }
+            if let error {
+                DisclosureGroup("Connection details") {
+                    Text(error).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                    Button("Open integration settings") { appState.openMCPSettings() }.buttonStyle(WorkspaceButtonStyle())
+                }.font(.system(size: 12)).foregroundStyle(.orange)
+            }
+            if let readable, !readable.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if selectedSource != nil || !search.isEmpty {
+                    NotificationMarkdownView(text: readable)
+                } else {
+                    Text(.init(readable)).font(.system(size: 14)).lineSpacing(5).lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button { selectedSource = source } label: { Label("Read summary", systemImage: "arrow.right") }
+                        .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
                 }
             } else {
-                HStack(spacing: 8) {
-                    if notificationService.isRefreshing {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "tray")
-                            .foregroundStyle(Color(NSColor.tertiaryLabelColor))
-                    }
-                    Text(
-                        notificationService.isRefreshing
-                            ? "Reading \(source.title)…"
-                            : "No summary yet. Refresh the brief to check this source."
-                    )
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
+                Text(digest == nil ? "No summary yet. Refresh to check this source." : "The saved text contains incomplete source data. Refresh for a readable summary.")
+                    .font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(5)
+            }
+            if let digest {
+                HStack {
+                    Text("Saved \(digest.fetchedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(expandedSources.contains(source) ? "Hide source details" : "Source details") {
+                        if expandedSources.contains(source) { expandedSources.remove(source) }
+                        else { expandedSources.insert(source) }
+                    }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                if expandedSources.contains(source) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Retrieved with \(digest.toolName)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                        if !digest.rawPreview.isEmpty || readable == nil {
+                            Text(digest.rawPreview.isEmpty ? digest.summary : digest.rawPreview)
+                                .font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                        } else {
+                            Text("Original source data is not retained between sessions.").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(WorkspaceDesign.inset, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
-        }
-        .padding(16)
-        .background(
-            Color(NSColor.controlBackgroundColor),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color(NSColor.separatorColor).opacity(0.45), lineWidth: 0.5)
-        )
+        }.padding(22).background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 17))
+            .overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(WorkspaceDesign.border))
     }
 
     private var visibleSources: [MCPIntegrationSource] {
-        guard let selectedSource else {
-            return UnifiedNotificationService.notificationSources
+        let sources = selectedSource.map { [$0] } ?? UnifiedNotificationService.notificationSources
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return sources }
+        return sources.filter { source in
+            let digest = notificationService.digests.first { $0.source == source }
+            let text = [source.title, digest.flatMap(NotificationReadingContent.readableSummary) ?? "", notificationService.sourceErrors[source] ?? ""].joined(separator: " ")
+            return text.localizedCaseInsensitiveContains(query)
         }
-        return [selectedSource]
     }
 
-    private var connectionIcon: String {
-        if notificationService.isRefreshing {
-            return "arrow.triangle.2.circlepath"
-        }
-        if notificationService.connectionStatus.hasPrefix("Connected") {
-            return "checkmark.circle.fill"
-        }
-        if notificationService.connectionStatus.hasPrefix("Connection failed") {
-            return "exclamationmark.triangle.fill"
-        }
-        return "network"
-    }
-
-    private var connectionColor: Color {
-        if notificationService.connectionStatus.hasPrefix("Connected") {
-            return .green
-        }
-        if notificationService.connectionStatus.hasPrefix("Connection failed") {
-            return .orange
-        }
-        return .accentColor
-    }
-
-    private var connectionDetail: String {
-        if let lastUpdatedAt = notificationService.lastUpdatedAt {
-            return "Last refreshed \(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))"
-        }
-        return "Configure a read-only MCP connection, then refresh."
-    }
-
-    private func tint(for source: MCPIntegrationSource) -> Color {
+    private func tint(_ source: MCPIntegrationSource) -> Color {
         switch source {
         case .slack: .purple
         case .gmail: .red
         case .googleCalendar: .blue
-        case .newRelic: .green
         case .jira: .indigo
+        case .newRelic: .green
         }
+    }
+}
+
+private struct NotificationMarkdownView: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle().fill(Color.secondary).frame(width: 4, height: 4).padding(.top, 9)
+                            Text(.init(String(trimmed.dropFirst(2)))).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        Text(.init(trimmed)).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }.font(.system(size: 15)).lineSpacing(6).textSelection(.enabled)
     }
 }

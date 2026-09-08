@@ -4,6 +4,7 @@ import SwiftUI
 
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
+    case today
     case workflows
     case fileTidy
     case clipboard
@@ -21,6 +22,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var title: String {
         switch self {
+        case .today: "Today"
         case .home:           "Home"
         case .workflows:      "Workflows"
         case .fileTidy:       "File Tidy"
@@ -39,6 +41,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var fullTitle: String {
         switch self {
+        case .today: "Today · Notes & Reminders"
         case .home:           "Home"
         case .workflows:      "Developer Workflows"
         case .fileTidy:       "File Tidy"
@@ -57,6 +60,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var systemImage: String {
         switch self {
+        case .today: "sun.max"
         case .home:           "house"
         case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
@@ -75,6 +79,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var activeSystemImage: String {
         switch self {
+        case .today: "sun.max.fill"
         case .home:           "house.fill"
         case .workflows:      "arrow.triangle.branch"
         case .fileTidy:       "folder.badge.gearshape"
@@ -93,6 +98,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var shortcutDigit: Character {
         switch self {
+        case .today: "t"
         case .home:           "1"
         case .workflows:      "w"
         case .fileTidy:       "2"
@@ -110,6 +116,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     }
 
     var shortcutLabel: String {
+        if self == .today { return "⌘⇧T" }
         if self == .notifications { return "⌘⇧N" }
         if self == .workflows { return "⌘⇧W" }
         if self == .data { return "⌘⇧D" }
@@ -118,7 +125,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var shortcutModifiers: EventModifiers {
         switch self {
-        case .notifications, .workflows, .data: [.command, .shift]
+        case .notifications, .workflows, .data, .today: [.command, .shift]
         default: [.command]
         }
     }
@@ -134,8 +141,17 @@ struct SidebarView: View {
     let visibleSections: [DashboardSection]
     @Environment(\.colorScheme) private var colorScheme
 
-    private var topSections: [DashboardSection] {
-        visibleSections.filter { !$0.isBottomGroup }
+    private var navigationGroups: [(title: String, sections: [DashboardSection])] {
+        let groups: [(String, [DashboardSection])] = [
+            ("Workspace", [.home, .today, .clipboard, .workflows]),
+            ("Tools", [.fileTidy, .data, .terminal, .developerTools]),
+            ("Connected", [.notifications, .jira, .asana]),
+            ("History", [.correctionLog, .aiRequestLog])
+        ]
+        return groups.compactMap { title, sections in
+            let visible = sections.filter { visibleSections.contains($0) }
+            return visible.isEmpty ? nil : (title, visible)
+        }
     }
     private var bottomSections: [DashboardSection] {
         visibleSections.filter { $0.isBottomGroup }
@@ -148,8 +164,12 @@ struct SidebarView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 2) {
-                    ForEach(topSections) { section in
-                        navRow(section)
+                    ForEach(navigationGroups, id: \.title) { group in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(group.title.uppercased()).font(.system(size: 10, weight: .semibold))
+                                .tracking(1.1).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 5)
+                            ForEach(group.sections) { section in navRow(section) }
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -177,7 +197,7 @@ struct SidebarView: View {
 
     private var appBrand: some View {
         HStack(spacing: 10) {
-            Image(nsImage: NSApp.applicationIconImage)
+            Image("TidyLogo")
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 30, height: 30)
@@ -208,7 +228,7 @@ struct SidebarView: View {
     private var sidebarBackground: Color {
         colorScheme == .dark
             ? Color(red: 0.10, green: 0.10, blue: 0.11)
-            : Color(red: 0.93, green: 0.93, blue: 0.95)
+            : Color(red: 0.945, green: 0.941, blue: 0.929)
     }
 
     @ViewBuilder
@@ -227,21 +247,22 @@ struct SidebarView: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(
                         active
-                            ? Color.accentColor.opacity(0.72)
+                            ? Color.secondary
                             : Color(NSColor.tertiaryLabelColor)
                     )
             }
-            .foregroundStyle(active ? Color.accentColor : Color(NSColor.secondaryLabelColor))
+            .foregroundStyle(active ? Color.primary : Color(NSColor.secondaryLabelColor))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
-                active ? Color.accentColor.opacity(0.12) : Color.clear,
+                active ? WorkspaceDesign.border.opacity(0.65) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .help("\(section.fullTitle) (\(section.shortcutLabel))")
+        .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
 
@@ -249,6 +270,7 @@ struct SidebarView: View {
 
 struct DashboardView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 0) {
@@ -266,10 +288,13 @@ struct DashboardView: View {
                 case .home:
                     HomeView()
                         .environmentObject(appState.correctionLogStore)
+                case .today:
+                    TodayView().environmentObject(appState.productivityService)
+                        .environmentObject(appState.productivitySyncService)
                 case .workflows:
                     DeveloperWorkflowsView()
                 case .fileTidy:
-                    FileTidyView()
+                    FileTidyView().environmentObject(appState.fileTidyViewModel)
                 case .clipboard:
                     ClipboardListView()
                         .environmentObject(appState.clipboardService)
@@ -324,7 +349,8 @@ struct DashboardView: View {
                 }
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
+        .onAppear { appState.onShowMainWindow = { openWindow(id: "main") } }
         .animation(.easeInOut(duration: 0.18), value: appState.isSidebarCollapsed)
         .sheet(isPresented: $appState.showOnboarding) {
             OnboardingView(
@@ -350,20 +376,41 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("A little more space for your work.").font(.system(size: 32, design: .serif))
+                    Text("Capture a thought, pick up a task, or put a useful tool to work.")
+                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                }.padding(.vertical, 12)
+                todayCard
                 heroCard
                 statusRow
                 featureGrid
                 hotkeysCard
                 Spacer(minLength: 8)
             }
-            .padding(22)
-            .frame(maxWidth: 700)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(32)
+            .frame(maxWidth: 940)
+            .frame(maxWidth: .infinity)
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
         .onReceive(permissionTimer) { _ in
             accessibilityTrusted = Permissions.isAccessibilityTrusted
         }
+    }
+
+    private var todayCard: some View {
+        Button { appState.openToday() } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "sun.max.fill").font(.system(size: 28)).foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Make room for today").font(.system(size: 18, weight: .bold))
+                    Text("Plan your focus, capture notes, and keep track of pending work and routines.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Label("Open Today", systemImage: "arrow.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.accentColor)
+            }.padding(20).background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        }.buttonStyle(.plain)
     }
 
     // MARK: Hero card
@@ -372,45 +419,38 @@ struct HomeView: View {
         HStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(.white.opacity(0.18))
+                    .fill(WorkspaceDesign.inset)
                     .frame(width: 52, height: 52)
                 Image(systemName: "sparkles")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
             }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("Tidy Selected Text")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Text("Select text anywhere, press the hotkey, and grammar is fixed instantly.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.78))
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text("⌃⌥G")
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(WorkspaceDesign.inset, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.white.opacity(0.28), lineWidth: 0.5)
+                        .stroke(WorkspaceDesign.border, lineWidth: 0.5)
                 )
         }
         .padding(20)
-        .background(
-            LinearGradient(
-                colors: [Color.accentColor, Color.accentColor.opacity(0.68)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .shadow(color: Color.accentColor.opacity(0.30), radius: 14, y: 5)
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(WorkspaceDesign.border))
     }
 
     // MARK: Status row
@@ -428,11 +468,11 @@ struct HomeView: View {
                 .help("Open Accessibility settings")
 
                 Button("Open Settings", action: openAccessibilityConfiguration)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
 
                 Button("Restart Tidy") { appState.restartApp() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(WorkspaceButtonStyle())
                     .controlSize(.small)
             }
 
@@ -541,7 +581,7 @@ struct HomeView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
@@ -560,7 +600,7 @@ struct HomeView: View {
                 Divider().opacity(0.4).padding(.leading, 14)
                 hotkeyRow(label: "Ask AI anything", combo: "⌃⌥J")
             }
-            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
@@ -599,250 +639,5 @@ struct HomeView: View {
 
     private var providerDisplayName: String {
         GrammarProviderID(rawValue: grammarProvider)?.displayName ?? grammarProvider
-    }
-}
-
-// MARK: - Page header helper
-
-fileprivate struct ContentHeader<Actions: View>: View {
-    let title: String
-    var subtitle: String? = nil
-    @ViewBuilder let actions: Actions
-
-    init(title: String, subtitle: String? = nil, @ViewBuilder actions: () -> Actions) {
-        self.title = title
-        self.subtitle = subtitle
-        self.actions = actions()
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Color(NSColor.labelColor))
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                }
-            }
-            Spacer()
-            HStack(spacing: 8) { actions }
-                .controlSize(.small)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
-    }
-}
-
-// MARK: - Clipboard list
-
-struct ClipboardListView: View {
-    @EnvironmentObject private var clipboardService: ClipboardService
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ContentHeader(
-                title: "Clipboard History",
-                subtitle: "\(clipboardService.entries.count) items stored"
-            ) { EmptyView() }
-
-            // Search
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                TextField("Search…", text: $clipboardService.query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                if !clipboardService.query.isEmpty {
-                    Button {
-                        clipboardService.query = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .background(Color(NSColor.controlBackgroundColor))
-            .overlay(alignment: .bottom) { Divider().opacity(0.5) }
-
-            if clipboardService.entries.isEmpty {
-                ContentUnavailableView(
-                    "No clipboard history yet",
-                    systemImage: "doc.on.clipboard",
-                    description: Text("Copy some text and it will appear here.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(clipboardService.entries.enumerated()), id: \.element.id) { index, entry in
-                            ClipboardRowView(
-                                entry: entry,
-                                onDelete: { clipboardService.delete(entry) }
-                            )
-                            if index < clipboardService.entries.count - 1 {
-                                Divider().opacity(0.35).padding(.leading, 56)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .background(Color(NSColor.windowBackgroundColor))
-    }
-}
-
-private struct ClipboardRowView: View {
-    let entry: ClipboardEntry
-    let onDelete: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(appColor(for: entry.sourceAppName))
-                .frame(width: 9, height: 9)
-                .padding(.leading, 20)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.preview)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(NSColor.labelColor))
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    if let app = entry.sourceAppName {
-                        Text(app)
-                    }
-                    Text("·")
-                    Text(entry.createdAt, style: .relative)
-                    Text("·")
-                    Text("\(entry.charCount) chars")
-                }
-                .font(.system(size: 11))
-                .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if isHovered {
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(entry.content, forType: .string)
-                } label: {
-                    Text("Copy")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.10), in: Capsule())
-                        .overlay(Capsule().stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                .padding(.trailing, 18)
-            }
-        }
-        .padding(.vertical, 11)
-        .background(isHovered ? Color(NSColor.controlBackgroundColor) : Color.clear)
-        .animation(.easeInOut(duration: 0.1), value: isHovered)
-        .onHover { isHovered = $0 }
-        .contextMenu {
-            Button("Copy") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(entry.content, forType: .string)
-            }
-            Button("Delete", role: .destructive) { onDelete() }
-        }
-    }
-
-    private func appColor(for appName: String?) -> Color {
-        switch appName?.lowercased() {
-        case "safari":                                       return Color(red: 0, green: 0.478, blue: 1)
-        case "chrome", "google chrome":                      return Color(red: 1, green: 0.584, blue: 0)
-        case "firefox":                                      return Color(red: 1, green: 0.4, blue: 0.1)
-        case "xcode":                                        return Color(red: 0.345, green: 0.525, blue: 0.835)
-        case "vs code", "visual studio code", "code":        return Color(red: 0.2, green: 0.784, blue: 0.349)
-        case "terminal", "iterm2", "iterm":                  return Color(red: 0.15, green: 0.15, blue: 0.15)
-        case "notes":                                        return Color(red: 1, green: 0.231, blue: 0.188)
-        case "slack":                                        return Color(red: 0.44, green: 0.15, blue: 0.6)
-        default:                                             return Color(NSColor.secondaryLabelColor)
-        }
-    }
-}
-
-// MARK: - Correction log
-
-struct CorrectionLogView: View {
-    @EnvironmentObject private var correctionLogStore: CorrectionLogStore
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ContentHeader(
-                title: "Correction Log",
-                subtitle: "\(correctionLogStore.entries.count) corrections recorded"
-            ) {
-                Button("Clear") { correctionLogStore.clear() }
-                    .buttonStyle(.bordered)
-                    .disabled(correctionLogStore.entries.isEmpty)
-            }
-
-            if correctionLogStore.entries.isEmpty {
-                ContentUnavailableView(
-                    "No corrections yet",
-                    systemImage: "checkmark.rectangle",
-                    description: Text("Grammar corrections you apply will be logged here.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(correctionLogStore.entries.enumerated()), id: \.element.id) { index, entry in
-                            VStack(alignment: .leading, spacing: 8) {
-                                if !entry.original.isEmpty {
-                                    Text(entry.original)
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                        .strikethrough(color: Color(NSColor.secondaryLabelColor))
-                                        .lineLimit(2)
-                                }
-                                Text(entry.corrected)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Color(NSColor.labelColor))
-                                    .lineLimit(3)
-                                HStack(spacing: 6) {
-                                    Text(entry.providerID)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 2)
-                                        .background(Color(NSColor.controlBackgroundColor), in: Capsule())
-                                        .overlay(Capsule().stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5))
-                                    Text(entry.createdAt, style: .relative)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color(NSColor.secondaryLabelColor))
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 13)
-
-                            if index < correctionLogStore.entries.count - 1 {
-                                Divider().opacity(0.35).padding(.leading, 20)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-        }
-        .background(Color(NSColor.windowBackgroundColor))
     }
 }

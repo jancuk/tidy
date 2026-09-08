@@ -15,29 +15,16 @@ struct DeveloperWorkflowsView: View {
                         workflowCard(workflow)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: 900)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(30)
+                .frame(maxWidth: 1000)
+                .frame(maxWidth: .infinity)
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(WorkspaceDesign.canvas)
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Developer Workflows")
-                    .font(.system(size: 17, weight: .bold))
-                Text("Outcome-focused paths through Tidy's local tools and connected work context")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(NSColor.secondaryLabelColor))
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 15)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+        WorkspaceHeader(title: "Workflows", subtitle: "A good starting point for the work ahead.") { EmptyView() }
     }
 
     private func workflowCard(_ workflow: DeveloperWorkflowDefinition) -> some View {
@@ -61,7 +48,7 @@ struct DeveloperWorkflowsView: View {
                 Text(workflow.title)
                     .font(.system(size: 15, weight: .bold))
                 Text(workflow.detail)
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(Color(NSColor.secondaryLabelColor))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -69,13 +56,13 @@ struct DeveloperWorkflowsView: View {
             Button(workflow.actionTitle) {
                 appState.runWorkflow(workflow.id)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(WorkspaceButtonStyle(prominent: true))
             .controlSize(.small)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+        .padding(22)
+        .frame(maxWidth: .infinity, minHeight: 215, alignment: .topLeading)
         .background(
-            Color(NSColor.controlBackgroundColor),
+            WorkspaceDesign.surface,
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .overlay(

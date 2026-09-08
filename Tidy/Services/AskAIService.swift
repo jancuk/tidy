@@ -236,6 +236,26 @@ enum AskAIError: LocalizedError {
 }
 
 struct AskAIService {
+    func transform(_ text: String, action: TextAction, language: String, tone: String, providerID: GrammarProviderID) async throws -> String {
+        try AppPrivacyPolicy.validateAIProvider(providerID)
+        let messages = [
+            ChatMessage(role: "system", content: action.systemPrompt(language: language, tone: tone)),
+            ChatMessage(role: "user", content: try TextAction.sourceMessage(text))
+        ]
+        switch providerID {
+        case .gemini: return try await askGemini(messages: messages)
+        case .openAI: return try await askOpenAI(messages: messages)
+        case .anthropic: return try await askAnthropic(messages: messages)
+        case .deepSeek: return try await askDeepSeek(messages: messages)
+        case .openCode: return try await askOpenCode(messages: messages)
+        case .ollama: return try await askOllama(messages: messages)
+        case .codexCLI, .claudeCLI:
+            throw TextActionError.invalid("Text actions require a provider without filesystem tools. Choose Ollama or an API provider in Settings.")
+        case .languageTool:
+            throw TextActionError.invalid("LanguageTool supports grammar correction only. Choose Ollama or a cloud provider for this action.")
+        }
+    }
+
     func ask(
         _ question: String,
         history: [AskAIMessage],

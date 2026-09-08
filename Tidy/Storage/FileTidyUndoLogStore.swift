@@ -5,11 +5,30 @@ final class FileTidyUndoLogStore: ObservableObject {
     @Published private(set) var sessions: [FileTidyUndoSession] = []
     private let url: URL
 
-    init() {
-        let directory = SecureLocalStorage.applicationSupportDirectory()
+    init(directory: URL? = nil) {
+        let directory = directory ?? SecureLocalStorage.applicationSupportDirectory()
+        SecureLocalStorage.ensureOwnerOnlyDirectory(at: directory)
         url = directory.appendingPathComponent("file-tidy-undo.json")
         load()
     }
+
+    func recoveryJournal(rootURL: URL) -> @Sendable ([FileTidyAppliedMove]) throws -> Void {
+        let fileURL = url
+        let sessionID = UUID()
+        let date = Date()
+        return { moves in
+            let previous: [FileTidyUndoSession]
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                previous = try JSONDecoder().decode([FileTidyUndoSession].self, from: Data(contentsOf: fileURL))
+            } else { previous = [] }
+            let session = FileTidyUndoSession(id: sessionID, rootPath: rootURL.path, createdAt: date, moves: moves)
+            let updated = [session] + previous.filter { $0.id != sessionID }
+            try JSONEncoder().encode(updated).write(to: fileURL, options: .atomic)
+            SecureLocalStorage.protectFile(at: fileURL)
+        }
+    }
+
+    func reload() { load() }
 
     func append(rootURL: URL, moves: [FileTidyAppliedMove]) {
         guard !moves.isEmpty else { return }
