@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jancuk/tidy/releases/latest/download/Tidy.dmg"><strong>Download Tidy 1.0</strong></a>
+  <a href="#build-a-local-sample-dmg"><strong>Build a sample DMG</strong></a>
   ·
   <a href="#privacy-and-security">Privacy</a>
   ·
@@ -17,17 +17,18 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/screenshot-dark.png" width="720" alt="Tidy dark mode home screen" />
+  <img src=".github/assets/screenshot-dark.png" width="720" alt="Tidy Home dashboard with Today, Meetings, and the main tools" />
 </p>
 
 ## Features
 
 - **Meeting Notes** — record in-person discussions or call-app audio plus microphone (`⌘⇧M`), then create timestamped transcripts, decisions, and action items. Save follow-ups to Today, play source audio, and export Markdown. Local Whisper transcription with Codex CLI summaries needs no transcription API key. Choose the summary model in Meetings; Gemini/OpenAI cloud transcription remains optional. See the [meeting guide](docs/meeting-notes.md).
-- **Today** — daily focus notes, pending tasks, searchable notes and code snippets, local reminders, and custom coding or movement routines with timers and completion history (`⌘⇧T`). Optional [Google Drive folder backup and two-way sync](docs/today-google-drive-sync.md) includes restore and conflict review.
+- **Today and Writing Room** — daily focus, tasks, Markdown notes with recoverable drafts, search, local reminders, and custom routines (`⌘⇧T`). Optional [Google Drive folder backup and two-way sync](docs/today-google-drive-sync.md) includes restore and conflict review. See the [writing guide](docs/writing-room.md).
 - **Text actions** — select text and press `⌃⌥Space` to fix grammar, shorten, translate, change tone, summarize, or create bullet points. Review before/after, replace when the app supports verified selection, or copy the result. Save and share custom action presets in Settings.
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
 - **Ask AI** — press `⌃⌥J` for a resizable chat workspace with searchable local history, temporary chats, a multiline composer, Markdown and code blocks, message editing, retry, and export. Select a provider and explicitly add folders or MCP sources. See the [chat guide](docs/ask-ai-workspace.md).
 - **Unified notifications** — connect a remote MCP server and summarize Slack, Gmail, and Google Calendar in one inbox.
+- **Slack reply inbox** — review discussions, prepare private reply suggestions, and inspect the exact destination and text before sending. See the [reply inbox guide](docs/slack-reply-inbox.md).
 - **Developer workflows** — local daily planning and reflection, meeting preparation, safe project cleanup, and context sharing.
 - **Clipboard history** — searchable history and a quick palette (`⌃⌥V`), persistent favorites and collections, plain-text paste, JSON/link actions, and one-action capture into Today.
 - **File Tidy** — preview-first folder organization, project disk usage and generated-folder detection, Git warnings and tracked-file protection, selective approval, and durable undo logs. Review moves preserve files rather than freeing disk space.
@@ -35,11 +36,15 @@
 - **Asana My Tasks** — connect a workspace, search and filter assigned tasks by due date, mark work complete, and jump to the original task in Asana.
 - **Developer tools** — JSON formatter/validator, JWT decoder, text diff, Unix time converter, CSV ↔ JSON converter, cron parser.
 - **Light / Dark / System** appearance, user-selectable from Settings.
-- **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool.
+- **Multiple AI providers** — Gemini Flash, OpenAI, Anthropic, DeepSeek, Ollama (local), OpenCode, LanguageTool, Codex CLI, and Jev-checked Codex rewrites.
 - API keys stored securely in macOS Keychain.
 - Goal-based onboarding and a Privacy Center with local-only AI controls, storage visibility, and data clearing.
 
-See the [text, clipboard, capture, and developer-cleanup guide](docs/text-and-cleanup-workflows.md) for shortcuts, presets, and recovery behavior. These additions are unreleased source changes.
+See the [text, clipboard, capture, and developer-cleanup guide](docs/text-and-cleanup-workflows.md) for shortcuts, presets, and recovery behavior.
+
+<p align="center">
+  <img src=".github/assets/screenshot-meetings.png" width="720" alt="Meeting Notes with a sample summary, decisions, and source references" />
+</p>
 
 ## Requirements
 
@@ -49,11 +54,16 @@ See the [text, clipboard, capture, and developer-cleanup guide](docs/text-and-cl
 
 ## Getting started
 
-### Install the app
+### Build a local sample DMG
 
-1. Download the latest [`Tidy.dmg`](https://github.com/jancuk/tidy/releases/latest/download/Tidy.dmg).
-2. Open the disk image and drag **Tidy** to **Applications**.
-3. Launch Tidy and grant Accessibility permission when prompted.
+There is no published signed release yet. On a Mac with Xcode 16 or newer, build a local sample from the current source:
+
+```sh
+./build-sample-dmg.sh
+open build/Tidy-sample.dmg
+```
+
+Drag **Tidy** to **Applications** from the disk image. The script also writes `build/Tidy-sample.dmg.sha256`. This sample has no Developer ID signature or notarization, so it is for local testing. The signed distribution process is described in [RELEASING.md](RELEASING.md).
 
 ### Build from source
 
