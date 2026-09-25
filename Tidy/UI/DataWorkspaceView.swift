@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct DataWorkspaceView: View {
     @EnvironmentObject private var workspace: DataWorkspaceService
+    @State private var showTableControls = false
     @State private var showAI = false
     @State private var showSave = false
     @State private var recipeName = ""
@@ -26,6 +27,7 @@ struct DataWorkspaceView: View {
             }
         }
         .background(WorkspaceDesign.canvas)
+        .sheet(isPresented: $showTableControls) { DataTableControls(options: workspace.tableOptions) }
         .sheet(isPresented: $showAI) { aiSheet }
         .sheet(isPresented: $showSave) { saveSheet }
     }
@@ -290,6 +292,9 @@ struct DataWorkspaceView: View {
                     Text(plan.summary).font(.system(size: 11)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if !workspace.resultCounts.isEmpty {
+                        if workspace.tableOptions.hasConditions {
+                            Text("Workflow totals before table filters").font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 16) { resultCounts }
                             VStack(alignment: .leading, spacing: 6) { resultCounts }
@@ -309,12 +314,42 @@ struct DataWorkspaceView: View {
                                        description: Text("Choose your tables and columns, then preview the result."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                DataResultTable(table: workspace.result)
+                HStack {
+                    Button { showTableControls = true } label: {
+                        Label("Filter & sort", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    .accessibilityIdentifier("dataFilterSort")
+                    if workspace.tableOptions.isActive {
+                        Button("Reset view") { Task { await workspace.applyTableOptions(DataTableOptions()) } }
+                        Text(workspace.tableOptions.summary)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("Click a header to sort · Shift-click to add a sort")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                .font(.system(size: 11)).padding(10)
+                .disabled(workspace.isRunning)
+                Divider()
+                DataResultTable(table: workspace.result, revision: workspace.tableRevision,
+                                offset: workspace.pageOffset, options: workspace.tableOptions) { column, adding in
+                    Task { await workspace.sortColumn(column, adding: adding) }
+                }
                 Divider()
                 HStack {
-                    Text("\(workspace.result.totalRowCount.formatted()) rows · \(workspace.result.columns.count) columns")
+                    Text("Rows \(workspace.displayedRange) of \(workspace.result.totalRowCount.formatted())")
                     Spacer()
-                    Text("Preview: \(workspace.result.rows.count) rows · Export includes all rows")
+                    Text("Export includes all matching rows")
+                    Button { Task { await workspace.changePage(forward: false) } } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel("Previous page")
+                    .disabled(workspace.isRunning || !workspace.hasPreviousPage)
+                    Button { Task { await workspace.changePage(forward: true) } } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .accessibilityLabel("Next page")
+                    .disabled(workspace.isRunning || !workspace.hasNextPage)
                 }
                 .font(.system(size: 10)).foregroundStyle(.secondary).padding(10)
             }
@@ -429,80 +464,6 @@ struct DataWorkspaceView: View {
         Task { await workspace.exportCurrentResult(to: url) }
     }
 }
-private struct DataResultTable: View {
-    let table: DataTable
-    private let columnWidth: CGFloat = 156
-    private let rowHeight: CGFloat = 31
-
-    private var columnIndices: [Int] {
-        let leading = ["_tidy_key", "_tidy_status", "_tidy_lookup", "_tidy_original"].compactMap { table.columns.firstIndex(of: $0) }
-        return leading + table.columns.indices.filter { !leading.contains($0) }
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            ScrollView([.horizontal, .vertical]) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 0) {
-                        rowNumberCell("#", header: true)
-                        ForEach(columnIndices, id: \.self) { index in
-                            tableCell(table.columns[index], header: true)
-                        }
-                    }
-
-                    ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
-                        HStack(spacing: 0) {
-                            rowNumberCell("\(index + 1)", header: false)
-                            ForEach(columnIndices, id: \.self) { columnIndex in
-                                tableCell(columnIndex < row.count ? row[columnIndex] ?? "NULL" : "", header: false)
-                            }
-                        }
-                        .background(index.isMultiple(of: 2) ? Color.clear : WorkspaceDesign.surface.opacity(0.34))
-                    }
-                }
-                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
-            }
-            .defaultScrollAnchor(.topLeading)
-            .overlay(alignment: .bottomTrailing) {
-                if table.isTruncated {
-                    Text("Showing \(table.rows.count) of \(table.totalRowCount.formatted()) rows")
-                        .font(.system(size: 9, weight: .medium))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(10)
-                }
-            }
-        }
-    }
-
-    private func tableCell(_ value: String, header: Bool) -> some View {
-        Text(value)
-            .font(.system(size: header ? 10 : 11, weight: header ? .semibold : .regular, design: header ? .rounded : .default))
-            .foregroundStyle(header ? Color(NSColor.secondaryLabelColor) : Color(NSColor.labelColor))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .help(value)
-            .textSelection(.enabled)
-            .frame(width: columnWidth, height: rowHeight, alignment: .leading)
-            .padding(.horizontal, 8)
-            .background(header ? WorkspaceDesign.surface : Color.clear)
-            .overlay(alignment: .trailing) { Divider().opacity(0.35) }
-            .overlay(alignment: .bottom) { Divider().opacity(0.35) }
-    }
-
-    private func rowNumberCell(_ value: String, header: Bool) -> some View {
-        Text(value)
-            .font(.system(size: 9, weight: header ? .semibold : .regular, design: .monospaced))
-            .foregroundStyle(.secondary)
-            .frame(width: 46, height: rowHeight, alignment: .trailing)
-            .padding(.trailing, 8)
-            .background(WorkspaceDesign.surface)
-            .overlay(alignment: .trailing) { Divider().opacity(0.45) }
-            .overlay(alignment: .bottom) { Divider().opacity(0.35) }
-    }
-}
-
 private struct DataMessageBubble: View {
     let message: DataWorkspaceMessage
 

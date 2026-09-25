@@ -162,3 +162,9 @@ For signed CLI builds, put `DEVELOPMENT_TEAM = <your-team-id>` in the gitignored
 - `ProductivityItem.source` is optional for backward compatibility. Captures keep full text, app metadata, and a supported source URL when supplied.
 - `DeveloperProjectScanner` measures projects and proposes generated-folder review moves. Normalize filesystem aliases before deriving relative paths or querying Git. Never move tracked generated files; record recovery paths before a move.
 - Workflow documentation and the focused UI test command are in `docs/text-and-cleanup-workflows.md`.
+
+## Slack development and permission rule
+
+- Automated tests for posts, replies, reactions, emoji, likes, or other Slack mutations must use local fixtures and mock transports. A live test is allowed only when the user requests it and separately approves its exact content and destination immediately before execution.
+- Slack messages and all remote writes require the user's explicit approval of the exact action and destination immediately before execution. Building a feature does not grant permission to send.
+- Suggested replies remain local until the user reviews the exact text and destination and confirms Send to Slack. Clearing suggestions or notifications only changes Tidy state. Refresh uses bounded, cached, serialized read requests and honors rate-limit cooldowns; it never posts.

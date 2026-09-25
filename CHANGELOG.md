@@ -7,6 +7,10 @@ semantic versioning and keeps unreleased work at the top.
 
 ### Added
 
+- Redesigned Meetings around recording, independent local transcription, and explicitly requested AI notes. Preferences hide advanced model setup; source references open beside the notes, recording accepts saved personal notes, and audio source choices are remembered.
+
+- Meeting Notes with microphone and selected-app call recording, local recovery, local Whisper or Gemini/OpenAI transcription, Codex CLI summaries by default with selectable summary models, timestamped source playback, action-item capture into Today, search, and Markdown export.
+- Ask AI workspace with searchable local conversations, temporary chats, provider selection, explicit context chips, multiline input, Markdown tables and code copying, edit-and-resend, retry, Stop, and Markdown export. The resizable window follows Tidy's appearance setting.
 - Today workspace with tasks, notes, routines, local reminders, and optional folder-based backup and conflict-aware sync.
 - Guided CSV lookup, replacement, joins, reconciliation, analysis, saved settings, and intermediate result tables.
 - Shared workspace styling and clearer notification and history reading views.
@@ -17,6 +21,9 @@ semantic versioning and keeps unreleased work at the top.
 - Developer project sizes, hidden generated-folder detection, Git warnings, and tracked-file protection.
 
 ### Fixed
+
+- Meeting summaries use compact evidence references and larger bounded transcript batches to reduce AI input and repeated requests while retaining source citations.
+- Meetings automatically stop and save at two hours, with a visible limit and no automatic AI calls at the cutoff.
 
 - Clipboard recopy preserves favorites and collection metadata; automatic retention keeps pinned entries.
 - File Tidy writes recovery paths before moves, keeps undo available after restart, and checks batches before changing files.

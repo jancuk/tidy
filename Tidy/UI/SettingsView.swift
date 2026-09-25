@@ -14,6 +14,8 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.clipboardMaxEntries) private var maxEntries         = 200
     @AppStorage(AppDefaults.clipboardMaxAgeDays) private var maxAgeDays         = 7
     @AppStorage(AppDefaults.openCodeModel)       private var openCodeModel      = "deepseek-v4-flash-free"
+    @AppStorage(AppDefaults.jevTextModel) private var jevTextModel = "jev-latest"
+    @AppStorage(AppDefaults.jevFastGrammarCheck) private var jevFastGrammarCheck = true
     @AppStorage(AppDefaults.deepSeekModel)       private var deepSeekModel      = "deepseek-v4-flash"
     @AppStorage(AppDefaults.ollamaBaseURL)       private var ollamaBaseURL      = "http://localhost:11434"
     @AppStorage(AppDefaults.ollamaModel)         private var ollamaModel        = "gnokit/improve-grammar"
@@ -35,6 +37,7 @@ struct SettingsView: View {
     @AppStorage(AppDefaults.settingsTab)          private var storedSettingsTab  = SettingsTab.general.rawValue
 
     @State private var launchAtLogin   = false
+    @State private var apiKeyStatus = ""
     @State private var keyValues: [String: String] = [:]
     @State private var statusMessage   = ""
     @State private var selectedTab     = SettingsTab.general
@@ -284,7 +287,7 @@ struct SettingsView: View {
                 settingsCard {
                     ForEach(Array(GrammarProviderID.allCases.filter(\.requiresAPIKey).enumerated()), id: \.element.id) { index, provider in
                         HStack {
-                            Text(provider.displayName)
+                            Text(provider == .jevCodex ? "TypeSafe / Jev" : provider.displayName)
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(NSColor.labelColor))
                             Spacer()
@@ -313,6 +316,10 @@ struct SettingsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Color(NSColor.secondaryLabelColor))
                 }
+            }
+
+            if !apiKeyStatus.isEmpty {
+                Text(apiKeyStatus).font(.footnote).foregroundStyle(.secondary)
             }
 
             if grammarProvider == GrammarProviderID.openCode.rawValue {
@@ -347,7 +354,22 @@ struct SettingsView: View {
                 }
             }
 
-            if grammarProvider == GrammarProviderID.codexCLI.rawValue {
+            if [grammarProvider, grammarFallbackProvider1, grammarFallbackProvider2].contains(GrammarProviderID.jevCodex.rawValue) {
+                settingsSection(title: "Jev + Codex") {
+                    settingsCard {
+                        settingsTextRow(label: "Jev model", systemImage: "cpu", binding: $jevTextModel, prompt: "jev-latest")
+                        Divider().opacity(0.5)
+                        Toggle("Check for unchanged text before rewriting", isOn: $jevFastGrammarCheck)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                    }
+                    Text("Leave this off for faster corrections: Codex rewrites immediately, then Jev checks the result. Turn it on to let Jev skip Codex for already-correct text; text needing edits takes an extra request. Short rewrites use low Codex reasoning effort. Rewriting uses both providers and may take longer than Codex alone.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("Uses the TypeSafe / Jev API key above, shared with meetings. Text is sent to TypeSafe and, when rewriting, Codex. Translate via Text Actions (⌃⌥Space). Ask AI uses Codex directly.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+
+            if grammarProvider == GrammarProviderID.codexCLI.rawValue || [grammarProvider, grammarFallbackProvider1, grammarFallbackProvider2].contains(GrammarProviderID.jevCodex.rawValue) {
                 settingsSection(title: "Codex CLI") {
                     settingsCard {
                         settingsTextRow(label: "Command", systemImage: "terminal", binding: $codexCLIPath, prompt: "codex or /path/to/codex")
@@ -1160,15 +1182,22 @@ struct SettingsView: View {
     }
 
     private func loadKeychainValues() {
+        keyValues[TypeSafeMeetingService.keychainKey] = KeychainStore.read(key: TypeSafeMeetingService.keychainKey) ?? ""
         for p in GrammarProviderID.allCases { keyValues[p.rawValue] = KeychainStore.read(key: p.rawValue) ?? "" }
     }
 
     private func saveKeychainValues() {
+        apiKeyStatus = ""
         for (key, value) in keyValues {
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 KeychainStore.delete(key: key)
             } else {
-                try? KeychainStore.save(value, key: key)
+                do {
+                    try KeychainStore.save(value.trimmingCharacters(in: .whitespacesAndNewlines), key: key)
+                } catch {
+                    apiKeyStatus = "Could not save API key: " + error.localizedDescription
+                    return
+                }
             }
         }
     }

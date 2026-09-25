@@ -1,10 +1,3 @@
-//
-//  TidyApp.swift
-//  Tidy
-//
-//  Created by Azhar Amir on 17/05/26.
-//
-
 import AppKit
 import SwiftUI
 
@@ -23,7 +16,18 @@ struct TidyApp: App {
         .defaultSize(width: 1220, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Tidy") {
+                    Task {
+                        await appState.meetingService.prepareForQuit()
+                        NSApplication.shared.terminate(nil)
+                    }
+                }.keyboardShortcut("q")
+            }
             CommandMenu("Text") {
+                Button("Ask AI…") { appState.openAskAI() }
+                    .keyboardShortcut("j", modifiers: [.command, .shift])
+                Divider()
                 Button("Text Actions…") { appState.textActionController.show(text: "") }
                     .keyboardShortcut(" ", modifiers: [.command, .shift])
                 Button("Text Actions for Selection…") { appState.textActionController.showSelection() }
@@ -49,13 +53,16 @@ struct TidyApp: App {
             }
         }
 
-        MenuBarExtra("Tidy", systemImage: "sparkles") {
+        MenuBarExtra {
             TidyMenuBarView(
                 appState: appState,
                 jiraService: appState.jiraService,
                 notificationService: appState.unifiedNotificationService,
-                productivity: appState.productivityService
+                productivity: appState.productivityService,
+                meetings: appState.meetingService
             )
+        } label: {
+            MeetingMenuBarLabel(meetings: appState.meetingService)
         }
         .menuBarExtraStyle(.menu)
 
@@ -82,9 +89,28 @@ private struct TidyMenuBarView: View {
     @ObservedObject var jiraService: JiraService
     @ObservedObject var notificationService: UnifiedNotificationService
     @ObservedObject var productivity: ProductivityService
+    @ObservedObject var meetings: MeetingService
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        Button {
+            openWindow(id: "main")
+            appState.selectedDashboardSection = .meetings
+            NSApp.activate(ignoringOtherApps: true)
+        } label: {
+            Label(meetings.recordingID == nil ? "Meeting Notes" : "Recording · \(MeetingRecord.timestamp(meetings.elapsed))", systemImage: "waveform")
+        }
+        if meetings.recordingID != nil {
+            Button(meetings.isTakingNotes ? "Finish & create meeting notes" : "Stop recording & save") {
+                Task { await meetings.stop(andSummarize: meetings.isTakingNotes) }
+            }
+                .disabled(meetings.isStopping)
+            if meetings.isTakingNotes {
+                Button("Stop & save without summary") { Task { await meetings.stop(andSummarize: false) } }
+                    .disabled(meetings.isStopping)
+            }
+        }
+        Divider()
         Button {
             openWindow(id: "main")
             appState.openToday()
@@ -198,9 +224,23 @@ private struct TidyMenuBarView: View {
         Divider()
 
         Button(role: .destructive) {
-            NSApplication.shared.terminate(nil)
+            Task {
+                await meetings.prepareForQuit()
+                NSApplication.shared.terminate(nil)
+            }
         } label: {
             Label("Quit Tidy", systemImage: "power")
+        }
+    }
+}
+
+private struct MeetingMenuBarLabel: View {
+    @ObservedObject var meetings: MeetingService
+    var body: some View {
+        if meetings.recordingID != nil {
+            Label("REC \(MeetingRecord.timestamp(meetings.elapsed))", systemImage: "record.circle")
+        } else {
+            Image(systemName: "sparkles").accessibilityLabel("Tidy")
         }
     }
 }

@@ -38,6 +38,18 @@ struct ProductivityTests {
         await workspace.waitForReminders()
     }
 
+    @Test func quickCapturedNotesUseMarkdownAsTheirSourceFormat() {
+        let workspace = service(at: date(7))
+        let markdown = "### Test\n\nA **formatted** note."
+
+        #expect(workspace.quickCapture(markdown, kind: .note))
+        let note = workspace.snapshot.items[0]
+        #expect(note.title == "Test")
+        #expect(note.body == markdown)
+        #expect(note.markdownSource == markdown)
+        #expect(note.contentFormat == .markdown)
+    }
+
     @Test func incompletePlansCarryForwardButFutureTasksStayOutOfToday() {
         let workspace = service(at: date(8))
         var old = ProductivityItem(kind: .task, title: "Carry over", plannedDay: date(7))

@@ -1,7 +1,7 @@
 import Foundation
 
-struct AskAIMessage: Identifiable, Equatable {
-    enum Role: String, Equatable {
+struct AskAIMessage: Identifiable, Equatable, Codable {
+    enum Role: String, Equatable, Codable {
         case user
         case assistant
     }
@@ -10,12 +10,16 @@ struct AskAIMessage: Identifiable, Equatable {
     let role: Role
     let content: String
     let createdAt: Date
+    var providerName: String?
+    var contextLabels: [String]?
 
-    init(id: UUID = UUID(), role: Role, content: String, createdAt: Date = Date()) {
+    init(id: UUID = UUID(), role: Role, content: String, createdAt: Date = Date(), providerName: String? = nil, contextLabels: [String]? = nil) {
         self.id = id
         self.role = role
         self.content = content
         self.createdAt = createdAt
+        self.providerName = providerName
+        self.contextLabels = contextLabels
     }
 }
 
@@ -243,6 +247,8 @@ struct AskAIService {
             ChatMessage(role: "user", content: try TextAction.sourceMessage(text))
         ]
         switch providerID {
+        case .jevCodex:
+            return try await JevCodexProvider().transform(text, action: action, language: language, tone: tone)
         case .gemini: return try await askGemini(messages: messages)
         case .openAI: return try await askOpenAI(messages: messages)
         case .anthropic: return try await askAnthropic(messages: messages)
@@ -262,11 +268,16 @@ struct AskAIService {
         context: AskAIContext,
         logStore: AIRequestLogStore,
         cliSession: AskAICLISession = AskAICLISession(),
+        providerID: GrammarProviderID? = nil,
+        isTemporary: Bool = false,
         progressHandler: @escaping (String) -> Void = { _ in },
         sessionUpdateHandler: @escaping (GrammarProviderID, String) -> Void = { _, _ in }
     ) async throws -> String {
-        let providerID = GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini
+        let providerID = (providerID ?? GrammarProviderID(rawValue: UserDefaults.standard.string(forKey: AppDefaults.grammarProvider) ?? "") ?? .gemini).chatProvider
         try AppPrivacyPolicy.validateAIProvider(providerID)
+        if isTemporary && (providerID == .codexCLI || providerID == .claudeCLI) {
+            throw TextActionError.invalid("Choose an API provider or Ollama for a temporary chat. CLI providers keep their own session files.")
+        }
         let providerName = providerID.displayName
         let start = Date()
 
@@ -281,18 +292,18 @@ struct AskAIService {
                 sessionUpdateHandler: sessionUpdateHandler
             )
             let ms = Int(Date().timeIntervalSince(start) * 1000)
-            Task { @MainActor in
+            if !isTemporary && !Task.isCancelled { Task { @MainActor in
                 logStore.append(AIRequestLogEntry(
                     providerName: providerName,
                     requestPreview: String(question.prefix(100)),
                     durationMs: ms,
                     source: "ask-ai"
                 ))
-            }
+            } }
             return answer
         } catch {
             let ms = Int(Date().timeIntervalSince(start) * 1000)
-            Task { @MainActor in
+            if !isTemporary && !Task.isCancelled { Task { @MainActor in
                 logStore.append(AIRequestLogEntry(
                     providerName: providerName,
                     requestPreview: String(question.prefix(100)),
@@ -301,7 +312,7 @@ struct AskAIService {
                     durationMs: ms,
                     source: "ask-ai"
                 ))
-            }
+            } }
             throw error
         }
     }
@@ -369,7 +380,7 @@ struct AskAIService {
             return try await askOpenCode(messages: messages)
         case .ollama:
             return try await askOllama(messages: messages)
-        case .languageTool, .codexCLI, .claudeCLI:
+        case .languageTool, .codexCLI, .claudeCLI, .jevCodex:
             throw AskAIError.providerUnavailable
         }
     }

@@ -14,12 +14,16 @@ final class AppState: ObservableObject {
     let correctionLogStore: CorrectionLogStore
     let aiRequestLogStore: AIRequestLogStore
     let productivityService: ProductivityService
+    let meetingService: MeetingService
+    let googleMeetMonitor = GoogleMeetMonitor()
     let productivitySyncService: ProductivitySyncService
     let dataWorkspaceService: DataWorkspaceService
     let suggestionMonitor: SuggestionMonitor
     let jiraService: JiraService
     let asanaService: AsanaService
     let terminalService: TerminalService
+    let slackReplyService: SlackReplyService
+    let slackSendService: SlackSendService
     let unifiedNotificationService: UnifiedNotificationService
     var onShowMainWindow: (() -> Void)?
     @Published var showOnboarding: Bool
@@ -72,6 +76,7 @@ final class AppState: ObservableObject {
         clipboardService = ClipboardService(store: ClipboardStore(directory: historyDirectory))
         correctionLogStore = CorrectionLogStore(directory: historyDirectory)
         aiRequestLogStore = AIRequestLogStore(directory: historyDirectory)
+        meetingService = MeetingService(directory: historyDirectory)
         textActionStore = TextActionStore(directory: historyDirectory)
         selectedTextService = SelectedTextService(clipboard: clipboardService)
         textActionController = TextActionController(store: textActionStore, selectionService: selectedTextService,
@@ -88,7 +93,16 @@ final class AppState: ObservableObject {
         )
         grammarService = GrammarService(hud: hud, logStore: correctionLogStore, requestLogStore: aiRequestLogStore)
         paletteController = ClipboardPaletteController(clipboardService: clipboardService)
-        askAIController = AskAIController(requestLogStore: aiRequestLogStore)
+        let testResponder: AskAIController.Responder? = isRunningTests ? { request in
+            let environment = ProcessInfo.processInfo.environment
+            let fixtures = environment["TIDY_ASK_AI_TEST_RESPONSES"].flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+            guard let response = fixtures[request.question] else { throw TextActionError.invalid("No test response is configured for this question.") }
+            try await Task.sleep(for: .milliseconds(500))
+            return response
+        } : nil
+        askAIController = AskAIController(requestLogStore: aiRequestLogStore,
+                                         conversations: AskAIConversationStore(directory: historyDirectory), responder: testResponder)
         suggestionMonitor = SuggestionMonitor()
         jiraService = JiraService()
         asanaService = AsanaService()
@@ -97,7 +111,19 @@ final class AppState: ObservableObject {
             ? URL(fileURLWithPath: ProcessInfo.processInfo.environment["TIDY_PREVIEW_NOTIFICATION_CACHE"]
                   ?? NSTemporaryDirectory().appending("TidyNotifications-\(UUID().uuidString)"))
             : nil
-        unifiedNotificationService = UnifiedNotificationService(requestLogStore: aiRequestLogStore, cacheDirectory: previewCache)
+        slackSendService = SlackSendService(
+            store: SlackOutboxStore(directory: isRunningTests ? previewCache : SecureLocalStorage.applicationSupportDirectory()),
+            writer: isRunningTests ? SlackPreviewWriter() : SlackMessageWriter()
+        )
+        slackReplyService = SlackReplyService(
+            store: SlackReplyStore(directory: isRunningTests ? previewCache : SecureLocalStorage.applicationSupportDirectory()),
+            reader: isRunningTests ? SlackReplyPreviewReader() : SlackMCPReader(),
+            generator: isRunningTests ? SlackReplyPreviewGenerator() : SlackReplyAI(log: aiRequestLogStore)
+        )
+        if isRunningTests, ProcessInfo.processInfo.environment["TIDY_SLACK_REPLY_FIXTURE"] == "1" {
+            slackReplyService.loadPreview()
+        }
+        unifiedNotificationService = UnifiedNotificationService(requestLogStore: aiRequestLogStore, cacheDirectory: previewCache, slackReplies: slackReplyService)
 
         hotkeyManager.onGrammar = { [weak self] in
             Task { @MainActor in self?.grammarService.tidySelectedText() }
@@ -143,6 +169,17 @@ final class AppState: ObservableObject {
         }.store(in: &cancellables)
 
         productivityService.onOpenWorkspace = { [weak self] in self?.openToday() }
+        googleMeetMonitor.canSuggest = { [weak self] in self?.meetingService.isBusy == false }
+        googleMeetMonitor.onOpenNotetaker = { [weak self] in
+            guard let self, !self.meetingService.isBusy else { return }
+            UserDefaults.standard.set(true, forKey: AppDefaults.meetingNotetakerEnabled)
+            UserDefaults.standard.set(MeetingMode.call.rawValue, forKey: AppDefaults.meetingRecordingMode)
+            UserDefaults.standard.set(MeetingCallAudioSource.system.rawValue, forKey: AppDefaults.meetingCallAudioSource)
+            self.meetingService.selectedID = nil
+            self.selectedDashboardSection = .meetings
+            self.onShowMainWindow?()
+            NSApp.activate(ignoringOtherApps: true)
+        }
         if !isRunningTests { start() }
     }
 
@@ -155,6 +192,8 @@ final class AppState: ObservableObject {
         productivitySyncService.start()
         clipboardService.start()
         suggestionMonitor.start()
+        googleMeetMonitor.start()
+        slackReplyService.start()
         unifiedNotificationService.start()
         registerHotkeys()
         if !showOnboarding,
@@ -353,7 +392,7 @@ final class AppState: ObservableObject {
     }
 
     var visibleDashboardSections: [DashboardSection] {
-        let alwaysVisible: Set<DashboardSection> = [.home, .today, .data, .settings]
+        let alwaysVisible: Set<DashboardSection> = [.home, .today, .meetings, .data, .settings]
         guard !selectedGoals.isEmpty else { return DashboardSection.allCases }
         let goalSections = selectedGoals.reduce(into: alwaysVisible) { result, goal in
             result.formUnion(goal.dashboardSections)
@@ -402,16 +441,21 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func clearAllLocalHistory() -> Bool {
-        guard !fileTidyViewModel.isApplying else { return false }
+        guard !fileTidyViewModel.isApplying, !slackSendService.isSending else { return false }
+        guard askAIController.clearHistory() else { return false }
         clipboardService.clear()
         correctionLogStore.clear()
         aiRequestLogStore.clear()
+        slackReplyService.reset()
+        slackSendService.reset()
         unifiedNotificationService.clearCache()
         fileTidyViewModel.clearUndoHistory()
         return true
     }
 
-    func disconnectAllIntegrations() {
+    @discardableResult
+    func disconnectAllIntegrations() -> Bool {
+        guard !slackSendService.isSending else { return false }
         KeychainStore.deleteAll()
         let defaults = UserDefaults.standard
         [
@@ -427,8 +471,11 @@ final class AppState: ObservableObject {
         defaults.set(false, forKey: AppDefaults.mcpAutoRefreshEnabled)
         jiraService.configurationDidChange()
         asanaService.configurationDidChange()
+        slackReplyService.reset()
+        slackSendService.reset()
         unifiedNotificationService.clearCache()
         unifiedNotificationService.configurationDidChange()
         credentialRevision += 1
+        return true
     }
 }

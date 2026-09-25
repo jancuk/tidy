@@ -131,6 +131,7 @@ enum GrammarCorrectionPipeline {
         language: String?
     ) async throws -> [String] {
         let serialProviderIDs: Set<String> = [
+            GrammarProviderID.jevCodex.rawValue,
             GrammarProviderID.codexCLI.rawValue,
             GrammarProviderID.claudeCLI.rawValue,
             GrammarProviderID.ollama.rawValue,

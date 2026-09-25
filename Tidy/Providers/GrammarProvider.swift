@@ -57,6 +57,8 @@ enum GrammarProviderFactory {
             OpenCodeProvider()
         case .ollama:
             OllamaProvider()
+        case .jevCodex:
+            JevCodexProvider()
         case .codexCLI:
             CodexCLIProvider()
         case .claudeCLI:

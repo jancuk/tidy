@@ -103,6 +103,19 @@ struct Hotkey: Equatable {
 }
 
 enum AppDefaults {
+    static let meetingRecordingMode = "meetingRecordingMode"
+    static let meetingCaptureBundleID = "meetingCaptureBundleID"
+    static let meetingCallAudioSource = "meetingCallAudioSource"
+    static let meetingNotetakerEnabled = "meetingNotetakerEnabled"
+    static let meetingDetectGoogleMeet = "meetingDetectGoogleMeet"
+    static let meetingTranscriptionProvider = "meetingTranscriptionProvider"
+    static let meetingCodexModel = "meetingCodexModel"
+    static let meetingTypeSafeModel = "meetingTypeSafeModel"
+    static let meetingOpenAIModel = "meetingOpenAIModel"
+    static let meetingWhisperCLIPath = "meetingWhisperCLIPath"
+    static let meetingWhisperModelPath = "meetingWhisperModelPath"
+    static let meetingSummaryProvider = "meetingSummaryProvider"
+    static let meetingSummaryLanguage = "meetingSummaryLanguage"
     static let textActionsHotkey = "textActionsHotkey"
     static let captureHotkey = "captureHotkey"
     static let textActionLanguage = "textActionLanguage"
@@ -119,6 +132,8 @@ enum AppDefaults {
     static let didCompleteFirstRun = "didCompleteFirstRun"
     static let autoSuggestEnabled = "autoSuggestEnabled"
     static let openCodeModel = "openCodeModel"
+    static let jevTextModel = "jevTextModel"
+    static let jevFastGrammarCheck = "jevFastGrammarCheck"
     static let deepSeekModel = "deepSeekModel"
     static let ollamaBaseURL = "ollamaBaseURL"
     static let ollamaModel = "ollamaModel"
@@ -169,6 +184,8 @@ extension UserDefaults {
             AppDefaults.didCompleteFirstRun: false,
             AppDefaults.autoSuggestEnabled: true,
             AppDefaults.openCodeModel: "deepseek-v4-flash-free",
+            AppDefaults.jevTextModel: "jev-latest",
+            AppDefaults.jevFastGrammarCheck: true,
             AppDefaults.deepSeekModel: "deepseek-v4-flash",
             AppDefaults.ollamaBaseURL: "http://localhost:11434",
             AppDefaults.ollamaModel: "gnokit/improve-grammar",

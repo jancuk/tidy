@@ -22,10 +22,11 @@
 
 ## Features
 
+- **Meeting Notes** — record in-person discussions or call-app audio plus microphone (`⌘⇧M`), then create timestamped transcripts, decisions, and action items. Save follow-ups to Today, play source audio, and export Markdown. Local Whisper transcription with Codex CLI summaries needs no transcription API key. Choose the summary model in Meetings; Gemini/OpenAI cloud transcription remains optional. See the [meeting guide](docs/meeting-notes.md).
 - **Today** — daily focus notes, pending tasks, searchable notes and code snippets, local reminders, and custom coding or movement routines with timers and completion history (`⌘⇧T`). Optional [Google Drive folder backup and two-way sync](docs/today-google-drive-sync.md) includes restore and conflict review.
 - **Text actions** — select text and press `⌃⌥Space` to fix grammar, shorten, translate, change tone, summarize, or create bullet points. Review before/after, replace when the app supports verified selection, or copy the result. Save and share custom action presets in Settings.
 - **Grammar fix** — select text in any app, press `⌃⌥G`, Tidy rewrites it via your chosen AI provider.
-- **Ask AI** — press `⌃⌥J` for a Quick AI chat panel with source slots for MCP, llm-wiki, and local folder context.
+- **Ask AI** — press `⌃⌥J` for a resizable chat workspace with searchable local history, temporary chats, a multiline composer, Markdown and code blocks, message editing, retry, and export. Select a provider and explicitly add folders or MCP sources. See the [chat guide](docs/ask-ai-workspace.md).
 - **Unified notifications** — connect a remote MCP server and summarize Slack, Gmail, and Google Calendar in one inbox.
 - **Developer workflows** — local daily planning and reflection, meeting preparation, safe project cleanup, and context sharing.
 - **Clipboard history** — searchable history and a quick palette (`⌃⌥V`), persistent favorites and collections, plain-text paste, JSON/link actions, and one-action capture into Today.

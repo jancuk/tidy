@@ -19,6 +19,7 @@ actor MCPClient {
         "2025-03-26"
     ])
 
+    nonisolated let rateLimitScope: String
     private let configuration: MCPServerConfiguration
     private let session: URLSession
     private var sessionID: String?
@@ -30,6 +31,7 @@ actor MCPClient {
         session: URLSession = .shared
     ) {
         self.configuration = configuration
+        self.rateLimitScope = SlackReplyFingerprint.make(configuration.endpoint.absoluteString + configuration.apiKey)
         self.session = session
     }
 
@@ -97,6 +99,11 @@ actor MCPClient {
             try await connect()
             return try await callToolOnce(name: name, arguments: arguments)
         }
+    }
+
+    func callToolWithoutRetry(name: String, arguments: [String: JSONValue]) async throws -> MCPToolResult {
+        try await ensureConnected()
+        return try await callToolOnce(name: name, arguments: arguments)
     }
 
     private func ensureConnected() async throws {
@@ -208,6 +215,9 @@ actor MCPClient {
         }
         if httpResponse.statusCode == 404, sessionID != nil {
             throw MCPError.sessionExpired
+        }
+        if httpResponse.statusCode == 429 {
+            throw MCPError.rateLimited(Double(httpResponse.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 300)
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw MCPError.transport(
@@ -611,6 +621,18 @@ enum MCPToolBroker {
         arguments: [String: JSONValue],
         client: MCPClient
     ) async throws -> MCPToolResult {
+        if route.source == .slack {
+            try await SlackReadGate.shared.acquire(scope: client.rateLimitScope, method: route.tool.name)
+        }
+        do {
+            return try await executeUnpaced(route: route, arguments: arguments, client: client)
+        } catch {
+            if route.source == .slack { await SlackReadGate.shared.record(error, scope: client.rateLimitScope) }
+            throw error
+        }
+    }
+
+    private static func executeUnpaced(route: MCPToolRoute, arguments: [String: JSONValue], client: MCPClient) async throws -> MCPToolResult {
         switch route.invocation {
         case .direct:
             return try await client.callTool(name: route.tool.name, arguments: arguments)
@@ -626,7 +648,7 @@ enum MCPToolBroker {
                     ])
                 ]
             )
-            let unwrapped = try workbenchExecutionResult(from: wrapperResult.displayText)
+            let unwrapped = try workbenchExecutionResult(from: wrapperResult)
             return MCPToolResult(
                 content: [
                     MCPContentBlock(type: "text", text: compactText(unwrapped, source: route.source))
@@ -675,7 +697,14 @@ enum MCPToolBroker {
     }
 
     static func workbenchExecutionResult(from text: String) throws -> JSONValue {
-        let value = try decodedJSON(text)
+        try workbenchExecutionValue(decodedJSON(text))
+    }
+
+    static func workbenchExecutionResult(from result: MCPToolResult) throws -> JSONValue {
+        try workbenchExecutionValue(result.structuredContent ?? decodedJSON(result.displayText))
+    }
+
+    private static func workbenchExecutionValue(_ value: JSONValue) throws -> JSONValue {
         guard let first = value.objectValue?["results"]?.arrayValue?.first?.objectValue else {
             throw MCPError.invalidResponse("execute_tools did not return a result.")
         }
@@ -717,6 +746,9 @@ enum MCPToolBroker {
         do {
             return try JSONDecoder().decode(JSONValue.self, from: data)
         } catch {
+            if text.contains("[result truncated:") {
+                throw MCPError.responseTooLarge
+            }
             throw MCPError.invalidResponse("Workbench returned malformed JSON content.")
         }
     }

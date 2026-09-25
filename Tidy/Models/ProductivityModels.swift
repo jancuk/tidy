@@ -13,6 +13,10 @@ enum ProductivityKind: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum ProductivityContentFormat: String, Codable {
+    case markdown
+}
+
 enum ProductivityPriority: Int, CaseIterable, Codable, Identifiable {
     case low, normal, high
     var id: Int { rawValue }
@@ -54,8 +58,25 @@ struct ProductivityItem: Identifiable, Codable, Equatable {
     var durationMinutes = 15
     var exerciseCompletions: [Date] = []
     var source: CaptureSource?
+    // Optional preserves decoding of pre-Markdown workspaces.
+    var contentFormat: ProductivityContentFormat?
 
     var isRecurring: Bool { kind == .exercise && cadence != .once }
+
+    var markdownSource: String {
+        guard kind == .note else { return body }
+        if contentFormat == .markdown { return body }
+        if body.isEmpty { return title }
+        if body == title || body.hasPrefix(title + "\n") { return body }
+        return title + "\n" + body
+    }
+
+    mutating func setMarkdownSource(_ source: String) {
+        kind = .note
+        contentFormat = .markdown
+        body = source
+        title = MarkdownDocument.plainTitle(from: source)
+    }
 
     func isComplete(at now: Date, calendar: Calendar) -> Bool {
         if isRecurring { return exerciseCompletions.contains { calendar.isDate($0, inSameDayAs: now) } }

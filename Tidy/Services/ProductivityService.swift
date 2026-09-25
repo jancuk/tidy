@@ -8,6 +8,9 @@ final class ProductivityService: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var reminderMessage: String?
     @Published private(set) var storageReady = false
+    @Published private(set) var writingDrafts: [WritingDraft] = []
+    @Published private(set) var writingDraftError: String?
+    @Published private(set) var writingDraftsReady = false
     @Published var editorItem: ProductivityItem?
     @Published var editingDailyNote: DailyFocusNote?
     @Published var selectedSection: ProductivitySection = .today
@@ -15,6 +18,7 @@ final class ProductivityService: ObservableObject {
     var onOpenWorkspace: (() -> Void)?
     var syncDeviceName = "Mac"
 
+    private let draftStore: WritingDraftStore
     private let store: ProductivityStore
     private let notifier: any ProductivityNotifying
     private let clock: () -> Date
@@ -24,6 +28,7 @@ final class ProductivityService: ObservableObject {
 
     init(store: ProductivityStore, notifier: any ProductivityNotifying, calendar: Calendar = .autoupdatingCurrent, clock: @escaping () -> Date = Date.init) {
         self.store = store
+        self.draftStore = WritingDraftStore(fileURL: store.fileURL?.deletingLastPathComponent().appendingPathComponent("writing-drafts.json"))
         self.notifier = notifier
         self.calendar = calendar
         self.clock = clock
@@ -69,6 +74,7 @@ final class ProductivityService: ObservableObject {
     }
 
     func reload() {
+        reloadWritingDrafts()
         do {
             snapshot = try store.load()
             storageReady = true
@@ -76,6 +82,66 @@ final class ProductivityService: ObservableObject {
         } catch {
             storageReady = false
             errorMessage = "\(ProductivityError.storageUnavailable.localizedDescription)\n\(error.localizedDescription)"
+        }
+    }
+
+    func reloadWritingDrafts() {
+        do {
+            writingDrafts = try draftStore.load()
+            writingDraftsReady = true
+            writingDraftError = nil
+        } catch {
+            writingDraftsReady = false
+            writingDraftError = "Could not load writing drafts. The original file is preserved. \(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func keepWritingDraft(item: ProductivityItem, source: String) -> Bool {
+        guard writingDraftsReady else { return false }
+        let previous = writingDrafts.first { $0.id == item.id }
+        let draft = WritingDraft(item: item, source: source, updatedAt: clock(),
+                                 baseUpdatedAt: previous?.baseUpdatedAt ?? (snapshot.items.contains { $0.id == item.id } ? item.updatedAt : nil))
+        var next = writingDrafts.filter { $0.id != item.id }
+        next.insert(draft, at: 0)
+        return commitWritingDrafts(next)
+    }
+
+    @discardableResult
+    func discardWritingDraft(_ id: UUID) -> Bool {
+        guard writingDraftsReady else { return false }
+        return commitWritingDrafts(writingDrafts.filter { $0.id != id })
+    }
+
+    @discardableResult
+    func finishWriting(_ item: ProductivityItem, source: String, asCopy: Bool = false) -> Bool {
+        let base = writingDrafts.first(where: { $0.id == item.id })?.baseUpdatedAt
+            ?? (snapshot.items.contains { $0.id == item.id } ? item.updatedAt : nil)
+        if !asCopy, let base, snapshot.items.first(where: { $0.id == item.id })?.updatedAt != base {
+            errorMessage = "This note changed since you started this draft. Save a copy to keep both versions."
+            return false
+        }
+        var note = item
+        if asCopy {
+            note.id = UUID()
+            note.createdAt = clock()
+            note.archivedAt = nil
+        }
+        note.setMarkdownSource(source)
+        guard save(note) else { return false }
+        _ = discardWritingDraft(item.id)
+        return true
+    }
+
+    private func commitWritingDrafts(_ drafts: [WritingDraft]) -> Bool {
+        do {
+            try draftStore.save(drafts)
+            writingDrafts = drafts
+            writingDraftError = nil
+            return true
+        } catch {
+            writingDraftError = "Draft could not be saved on this Mac. Keep this window open or export your writing. \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -120,9 +186,15 @@ final class ProductivityService: ObservableObject {
     @discardableResult
     func quickCapture(_ text: String, kind: ProductivityKind) -> Bool {
         tick()
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        var item = ProductivityItem(kind: kind, title: lines.first.map(String.init) ?? "", body: lines.dropFirst().joined(separator: "\n"),
+        var item: ProductivityItem
+        if kind == .note {
+            item = ProductivityItem(kind: .note, createdAt: now, updatedAt: now, routineStart: now)
+            item.setMarkdownSource(text)
+        } else {
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            item = ProductivityItem(kind: kind, title: lines.first.map(String.init) ?? "", body: lines.dropFirst().joined(separator: "\n"),
                                     createdAt: now, updatedAt: now, routineStart: now)
+        }
         if kind == .task && selectedSection == .today { item.plannedDay = calendar.startOfDay(for: now) }
         return save(item)
     }
@@ -134,8 +206,14 @@ final class ProductivityService: ObservableObject {
             errorMessage = "Capture up to 100,000 characters as a task or note."; return false
         }
         tick()
-        let title = String((content.components(separatedBy: .newlines).first ?? content).prefix(120))
-        var item = ProductivityItem(kind: kind, title: title, body: text, createdAt: now, updatedAt: now, routineStart: now)
+        var item: ProductivityItem
+        if kind == .note {
+            item = ProductivityItem(kind: .note, createdAt: now, updatedAt: now, routineStart: now)
+            item.setMarkdownSource(text)
+        } else {
+            let title = String((content.components(separatedBy: .newlines).first ?? content).prefix(120))
+            item = ProductivityItem(kind: kind, title: title, body: text, createdAt: now, updatedAt: now, routineStart: now)
+        }
         item.source = source
         item.plannedDay = calendar.startOfDay(for: now)
         return save(item)
@@ -288,7 +366,7 @@ final class ProductivityService: ObservableObject {
                 lines.append("Routine: \(item.cadence.rawValue) · \(item.durationMinutes) minutes")
                 lines.append("Completed: " + item.exerciseCompletions.map { $0.formatted(date: .abbreviated, time: .omitted) }.joined(separator: ", "))
             }
-            lines += ["", item.body, ""]
+            lines += ["", item.kind == .note ? item.markdownSource : item.body, ""]
         }
         lines += ["# Daily focus notes", ""]
         for note in snapshot.dailyNotes.sorted(by: { $0.date > $1.date }) {

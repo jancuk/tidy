@@ -28,7 +28,7 @@ extension GrammarProviderID {
         switch self {
         case .ollama:
             true
-        case .gemini, .openAI, .anthropic, .deepSeek, .languageTool, .openCode, .codexCLI, .claudeCLI:
+        case .jevCodex, .gemini, .openAI, .anthropic, .deepSeek, .languageTool, .openCode, .codexCLI, .claudeCLI:
             false
         }
     }
@@ -53,6 +53,12 @@ enum PrivacyDataInventory {
         return definitions.map { definition in
             let size = definition.fileNames.reduce(Int64(0)) { result, fileName in
                 let url = directory.appendingPathComponent(fileName)
+                if fileName == "Meetings", let files = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey], options: [.skipsHiddenFiles]) {
+                    return result + files.reduce(Int64(0)) { total, item in
+                        guard let file = item as? URL, let values = try? file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true else { return total }
+                        return total + Int64(values.fileSize ?? 0)
+                    }
+                }
                 let attributes = try? fileManager.attributesOfItem(atPath: url.path)
                 return result + ((attributes?[.size] as? NSNumber)?.int64Value ?? 0)
             }
@@ -67,12 +73,15 @@ enum PrivacyDataInventory {
     }
 
     private static let definitions: [PrivacyStorageItem] = [
+        PrivacyStorageItem(id: "slack-replies", title: "Slack reply inbox", detail: "Discussion context, suggestions, dismissals, recaps, and delivery history", fileNames: ["slack-replies.json", "slack-outbox.json"], byteCount: 0),
+        PrivacyStorageItem(id: "meetings", title: "Meetings", detail: "Audio, transcripts, and summaries; delete individual meetings from Meetings", fileNames: ["Meetings"], byteCount: 0),
+        PrivacyStorageItem(id: "ai-conversations", title: "Ask AI conversations", detail: "Saved chat messages; temporary chats are excluded", fileNames: ["ai-conversations.json"], byteCount: 0),
         PrivacyStorageItem(id: "text-actions", title: "Text action presets", detail: "Custom instructions and optional shortcuts; no selected text", fileNames: ["text-actions.json"], byteCount: 0),
         PrivacyStorageItem(
             id: "productivity",
             title: "Today workspace",
-            detail: "Notes, tasks, daily focus, routine history, and local reminder settings",
-            fileNames: ["productivity.json", "productivity-sync-settings.json"],
+            detail: "Notes, writing drafts, tasks, daily focus, routine history, and local reminder settings",
+            fileNames: ["productivity.json", "writing-drafts.json", "productivity-sync-settings.json"],
             byteCount: 0
         ),
         PrivacyStorageItem(

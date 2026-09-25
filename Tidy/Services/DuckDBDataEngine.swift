@@ -6,6 +6,7 @@ protocol TabularDataEngine: Sendable {
     func registerQuery(_ sql: String, id: UUID, tableName: String, displayName: String) async throws -> DataSource
     func removeTable(named tableName: String) async throws
     func query(_ sql: String, limit: Int) async throws -> DataTable
+    func queryPage(_ sql: String, limit: Int, offset: Int, knownTotal: Int?) async throws -> DataTable
     func exportCSV(query sql: String, to url: URL) async throws
 }
 
@@ -24,7 +25,7 @@ actor DuckDBDataEngine: TabularDataEngine {
             auto_detect = true,
             all_varchar = true,
             header = true,
-            sample_size = -1,
+            sample_size = 20480,
             ignore_errors = false
         )
         """)
@@ -70,14 +71,23 @@ actor DuckDBDataEngine: TabularDataEngine {
     }
 
     func query(_ sql: String, limit: Int = 250) throws -> DataTable {
+        try queryPage(sql, limit: limit, offset: 0, knownTotal: nil)
+    }
+
+    func queryPage(_ sql: String, limit: Int, offset: Int, knownTotal: Int?) throws -> DataTable {
         let connection = try activeConnection()
         let boundedLimit = max(1, min(limit, 1_000))
-        let countResult = try connection.query("SELECT COUNT(*)::VARCHAR FROM (\(sql)) AS tidy_count")
-        let totalRowCount = Int(countResult[0].cast(to: String.self)[0] ?? "0") ?? 0
+        let totalRowCount: Int
+        if let knownTotal {
+            totalRowCount = knownTotal
+        } else {
+            let countResult = try connection.query("SELECT COUNT(*)::VARCHAR FROM (\(sql)) AS tidy_count")
+            totalRowCount = Int(countResult[0].cast(to: String.self)[0] ?? "0") ?? 0
+        }
         let result = try connection.query("""
         SELECT COLUMNS(*)::VARCHAR
         FROM (\(sql)) AS tidy_result
-        LIMIT \(boundedLimit)
+        LIMIT \(boundedLimit) OFFSET \(max(0, offset))
         """)
         let columns = (0..<Int(result.columnCount)).map { result.columnName(at: UInt64($0)) }
         let stringColumns = (0..<Int(result.columnCount)).map {

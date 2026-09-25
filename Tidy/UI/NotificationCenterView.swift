@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct NotificationCenterView: View {
+struct NotificationOverviewView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var notificationService: UnifiedNotificationService
     @State private var expandedSources: Set<MCPIntegrationSource> = []

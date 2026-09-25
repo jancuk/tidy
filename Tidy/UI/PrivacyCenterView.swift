@@ -36,6 +36,12 @@ struct PrivacyCenterView: View {
             section("What can leave this Mac") {
                 VStack(spacing: 0) {
                     dataFlowRow(
+                        icon: "waveform",
+                        title: "Meeting recordings and transcripts",
+                        detail: "When you choose to summarize, audio is uploaded to OpenAI for transcription. The transcript is then sent to OpenAI API or Codex CLI. Local-only AI blocks both. Delete recordings, transcripts, and notes inside Meetings."
+                    )
+                    Divider().opacity(0.45).padding(.leading, 52)
+                    dataFlowRow(
                         icon: "textformat",
                         title: "Selected text and Ask AI context",
                         detail: "Sent only to the provider you choose. Blocked for non-local providers in local-only mode."
@@ -124,13 +130,14 @@ struct PrivacyCenterView: View {
         ) {
             if confirmation == .localHistory {
                 Button("Clear all local history", role: .destructive) {
-                    statusMessage = appState.clearAllLocalHistory() ? "Local history was cleared." : "Wait for File Tidy to finish before clearing recovery history."
+                    statusMessage = appState.clearAllLocalHistory() ? "Local history was cleared." : "Could not clear all history. Check Ask AI storage or wait for File Tidy or a Slack send to finish."
                     reloadInventory()
                 }
             } else if confirmation == .credentials {
                 Button("Remove all saved credentials", role: .destructive) {
-                    appState.disconnectAllIntegrations()
-                    statusMessage = "Saved credentials and connection metadata were removed."
+                    statusMessage = appState.disconnectAllIntegrations()
+                        ? "Saved credentials and connection metadata were removed."
+                        : "Wait for the current Slack send to finish before removing credentials."
                     reloadInventory()
                 }
             }
@@ -201,7 +208,7 @@ private enum PrivacyConfirmation: Equatable {
     var message: String {
         switch self {
         case .localHistory:
-            "This clears clipboard history, corrections, AI diagnostics, notification summaries, and File Tidy undo records. It does not move or delete your files. Your Today notes, tasks, and routines are kept."
+            "This clears clipboard history, corrections, AI diagnostics, notification summaries, and File Tidy undo records. It does not move or delete your files. Your Today notes, tasks, routines, and saved meetings are kept. Delete a recording and its transcript from Meetings."
         case .credentials:
             "This removes provider keys and Jira, Asana, and MCP credentials from Keychain, then disconnects those integrations."
         }

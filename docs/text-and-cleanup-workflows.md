@@ -82,3 +82,17 @@ xcodebuild test -project Tidy.xcodeproj -scheme Tidy \
 Replace `YOUR_TEAM_ID` with the team for your installed Apple Development certificate. Ad-hoc signing can prevent the macOS UI runner from starting.
 
 Before distributing, manually verify selection replacement and restoration in the apps you support, terminal copy-only behavior, permission denial, focus/selection changes while a request is running, and each configured AI provider. These OS- and account-dependent flows are not proven by local transformation/storage tests.
+
+## Jev + Codex for grammar and translation
+
+Choose **Settings → Model → AI provider → Jev + Codex**, save the **TypeSafe / Jev** API key, and sign in under Codex CLI. The key is shared with Jev meeting excerpts. The grammar shortcut runs the hybrid; use **Text Actions → Translate** (⌃⌥Space) and the configured target language for translation.
+
+With **Check for unchanged text before rewriting** enabled, Jev evaluates whether the original text needs correction. A probability of at least 0.98 returns the exact original without launching Codex. Otherwise Codex generates a correction. Translations and other rewrites always run Codex. Jev then checks task fulfillment and faithfulness together, requiring at least 0.9 for each before returning the candidate. These initial thresholds need evaluation on real text, especially mixed-language selections; they are not correctness guarantees. Leave this preliminary check off for faster corrections; it avoids one sequential TypeSafe request. Codex then always generates a correction and Jev still verifies it.
+
+Hybrid text rewrites set Codex reasoning effort to `low` without changing the chosen model or meeting-summary reasoning. Accessibility selection reads run off the main thread with short messaging timeouts so an unresponsive source app does not block the loading HUD.
+
+Only unchanged grammar can avoid Codex latency. Rewriting adds Jev validation latency and uses both provider allowances. Failures remain eligible for the existing grammar fallback chain; Text Actions transformations surface a failure without replacing text. No latency improvement has been measured against the live API yet.
+
+The hybrid uses the shared, ephemeral Codex text runner with tools, user config, rules, project documents, plugins, and web search disabled. It is available in Text Actions because it does not expose filesystem tools. Regular Codex/Claude CLI providers remain excluded there. Ask AI uses Codex directly, clearly labeled in its own provider selector; Jev is not a general chat model.
+
+Original and generated text are sent to TypeSafe for evaluation; rewriting also sends the original to Codex. Local-only AI blocks the hybrid. Jev text checks allow up to 24 KB of encoded state (original, candidate, and task); oversized selections fail without truncation. Grammar retains the existing chunking and fallback behavior. No text or key is put in the Codex command-line arguments; temporary request files are removed after the process stops.

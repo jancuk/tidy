@@ -652,7 +652,7 @@ struct TidyTests {
     }
 
     @Test func dashboardSectionShortcutsFollowSidebarOrder() {
-        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1tw23d4567n890"))
+        #expect(DashboardSection.allCases.map(\.shortcutDigit) == Array("1tmw23d4567n890"))
         #expect(DashboardSection.notifications.shortcutLabel == "⌘⇧N")
         #expect(DashboardSection.asana.shortcutLabel == "⌘9")
         #expect(DashboardSection.settings.shortcutLabel == "⌘0")

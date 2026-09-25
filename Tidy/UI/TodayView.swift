@@ -12,6 +12,7 @@ struct TodayView: View {
     @State private var showJournal = false
     @State private var captureDraftID: UUID?
     @State private var savedMessage: String?
+    @State private var markdownComposerFocused = false
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -32,7 +33,12 @@ struct TodayView: View {
                     }
                     if productivity.search.isEmpty { workspaceIntroduction }
                     if let session = productivity.snapshot.session { sessionCard(session) }
-                    captureBar
+                    if productivity.search.isEmpty && (productivity.selectedSection == .today || productivity.selectedSection == .notes) {
+                        WritingLaunchpad().environmentObject(productivity)
+                    }
+                    if productivity.selectedSection != .archive && productivity.selectedSection != .completed && productivity.selectedSection != .notes {
+                        captureBar
+                    }
                     if productivity.selectedSection == .exercises && productivity.search.isEmpty { routineStarters }
                     if productivity.selectedSection == .reminders && productivity.search.isEmpty { reminderOverview }
                     if !productivity.search.isEmpty {
@@ -41,7 +47,7 @@ struct TodayView: View {
                     }
                     if !productivity.visibleItems.isEmpty {
                         HStack {
-                            Text(productivity.search.isEmpty ? "\(productivity.selectedSection.rawValue) · \(productivity.visibleItems.count)" : "\(productivity.visibleItems.count) results")
+                            Text(productivity.search.isEmpty ? "\(productivity.selectedSection == .notes ? "Your library" : productivity.selectedSection.rawValue) · \(productivity.visibleItems.count)" : "\(productivity.visibleItems.count) results")
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                             Spacer()
                             if productivity.selectedSection == .today {
@@ -83,7 +89,8 @@ struct TodayView: View {
         }
         .onChange(of: captureText) { _, text in if !text.isEmpty { savedMessage = nil } }
         .sheet(item: $productivity.editorItem) { item in
-            ProductivityItemEditor(item: item).environmentObject(productivity)
+            ProductivityItemEditor(item: item, startsInReadingMode: productivity.snapshot.items.contains { $0.id == item.id })
+                .environmentObject(productivity)
         }
         .sheet(item: $productivity.editingDailyNote) { note in
             DailyFocusEditor(note: note).environmentObject(productivity)
@@ -192,7 +199,7 @@ struct TodayView: View {
         switch productivity.selectedSection {
         case .today: greeting
         case .pending: "One thing at a time."
-        case .notes: "Keep a thought for later."
+        case .notes: "Your words belong here."
         case .exercises: "Make time for yourself."
         case .reminders: "A little less to remember."
         case .completed: "Look how far you've come."
@@ -204,7 +211,7 @@ struct TodayView: View {
         switch productivity.selectedSection {
         case .today: "A thought, a task, a fresh start. It all belongs here."
         case .pending: "Your next steps, ready when you are."
-        case .notes: "Ideas, code snippets, and the context you don't want to lose."
+        case .notes: "Start small. Keep going. Turn a thought into something worth sharing."
         case .exercises: "Coding practice, a movement break, or a routine that's yours."
         case .reminders: "Keep the important things close, without keeping them in your head."
         case .completed: "Finished tasks and today's routine completions."
@@ -231,15 +238,23 @@ struct TodayView: View {
                             .foregroundStyle(.tertiary).padding(.leading, 5).padding(.top, 8)
                             .allowsHitTesting(false)
                     }
-                    TextEditor(text: $captureText)
-                        .scrollContentBackground(.hidden).focused($composerFocused)
-                        .accessibilityLabel("Quick capture")
+                    if captureKind == .note {
+                        MarkdownSourceEditor(text: $captureText, isFocused: $markdownComposerFocused,
+                                             accessibilityLabel: "Quick capture Markdown note")
+                    } else {
+                        TextEditor(text: $captureText)
+                            .scrollContentBackground(.hidden).focused($composerFocused)
+                            .accessibilityLabel("Quick capture")
+                    }
                 }
                 .font(.system(size: 16)).lineSpacing(7)
                 .frame(height: 116)
                 HStack(spacing: 5) {
                     ForEach(ProductivityKind.allCases) { kind in
-                        Button { captureKind = kind; composerFocused = true } label: {
+                        Button {
+                            captureKind = kind
+                            if kind == .note { markdownComposerFocused = true } else { composerFocused = true }
+                        } label: {
                             Label(kind.title, systemImage: kind.icon)
                                 .font(.system(size: 11, weight: .medium))
                                 .padding(.horizontal, 11).padding(.vertical, 7)
@@ -249,6 +264,10 @@ struct TodayView: View {
                             .accessibilityAddTraits(captureKind == kind ? .isSelected : [])
                     }
                     Spacer(minLength: 6)
+                    if captureKind == .note {
+                        Label("Markdown", systemImage: "textformat")
+                            .font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                    }
                     Button(action: composeDetails) {
                         Image(systemName: "slider.horizontal.3").frame(width: 30, height: 30)
                     }.buttonStyle(.plain).foregroundStyle(.secondary)
@@ -265,8 +284,8 @@ struct TodayView: View {
             }
             .padding(20)
             .background(WorkspaceDesign.surface, in: RoundedRectangle(cornerRadius: 23))
-            .overlay(RoundedRectangle(cornerRadius: 23).strokeBorder(composerFocused ? Color.accentColor.opacity(0.5) : WorkspaceDesign.border))
-            .shadow(color: .black.opacity(composerFocused ? 0.07 : 0.035), radius: 18, y: 5)
+            .overlay(RoundedRectangle(cornerRadius: 23).strokeBorder(composerFocused || markdownComposerFocused ? Color.accentColor.opacity(0.5) : WorkspaceDesign.border))
+            .shadow(color: .black.opacity(composerFocused || markdownComposerFocused ? 0.07 : 0.035), radius: 18, y: 5)
             HStack(spacing: 5) {
                 Image(systemName: savedMessage == nil ? "lock" : "checkmark.circle")
                 Text(savedMessage ?? (sync.isEnabled ? "Saved locally · Drive folder connected" : "Saved on this Mac"))
@@ -290,6 +309,10 @@ struct TodayView: View {
     private func composeDetails() {
         let lines = captureText.split(separator: "\n", omittingEmptySubsequences: false)
         productivity.beginCapture(captureKind, title: lines.first.map(String.init) ?? "", body: lines.dropFirst().joined(separator: "\n"))
+        if captureKind == .note, var item = productivity.editorItem {
+            item.setMarkdownSource(captureText)
+            productivity.editorItem = item
+        }
         captureDraftID = productivity.editorItem?.id
     }
 
@@ -336,11 +359,15 @@ struct TodayView: View {
             }
             Button { productivity.editorItem = item } label: {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(item.title).font(.system(size: 14, weight: .semibold))
-                            .strikethrough(complete && item.kind != .note).foregroundStyle(complete ? .secondary : .primary)
-                        if item.pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(Color.accentColor) }
-                        if item.priority == .high { Text("High priority").font(.system(size: 10, weight: .medium)).foregroundStyle(.orange) }
+                    if item.kind == .note {
+                        MarkdownDocumentView(source: item.markdownSource, compact: true)
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(item.title).font(.system(size: 14, weight: .semibold))
+                                .strikethrough(complete).foregroundStyle(complete ? .secondary : .primary)
+                            if item.pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(Color.accentColor) }
+                            if item.priority == .high { Text("High priority").font(.system(size: 10, weight: .medium)).foregroundStyle(.orange) }
+                        }
                     }
                     if let source = item.source {
                         HStack(spacing: 6) {
@@ -348,11 +375,13 @@ struct TodayView: View {
 
                         }.font(.caption).foregroundStyle(.secondary)
                     }
-                    if !item.body.isEmpty {
+                    if item.kind != .note && !item.body.isEmpty {
                         Text(item.body).font(.system(size: 13)).lineSpacing(4).foregroundStyle(.secondary).lineLimit(2)
                     }
                     HStack(spacing: 10) {
                         Text(item.kind.title).font(.system(size: 10, weight: .medium))
+                        if item.pinned { Label("Pinned", systemImage: "pin.fill").foregroundStyle(Color.accentColor) }
+                        if item.priority == .high { Text("High priority").foregroundStyle(.orange) }
                         if item.kind == .exercise {
                             Text("\(item.cadence.rawValue) · \(item.durationMinutes) min")
                             Text("\(item.exerciseCompletions.count + (item.completedAt == nil ? 0 : 1)) completions")
@@ -459,7 +488,7 @@ struct TodayView: View {
             if captureKind == .note { productivity.selectedSection = .notes }
             if captureKind == .exercise { productivity.selectedSection = .exercises }
             savedMessage = "Saved to \(productivity.selectedSection.rawValue.lowercased())"
-            composerFocused = true
+            if captureKind == .note { markdownComposerFocused = true } else { composerFocused = true }
         }
     }
 

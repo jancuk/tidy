@@ -165,15 +165,22 @@ final class GrammarService: ObservableObject {
     }
 
     private func readSelectedText() async throws -> String {
-        if let selectedText = readSelectedTextWithAccessibility() {
-            return selectedText
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return "" }
+        // Accessibility calls can block while another app is busy; keep the HUD responsive.
+        let selectedText = await Task.detached(priority: .userInitiated) {
+            Self.readSelectedTextWithAccessibility(pid: pid)
+        }.value
+        try Task.checkCancellation()
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+            throw TextActionError.invalid("The active app changed. Select the text again and retry.")
         }
+        if let selectedText { return selectedText }
         return try await readSelectedTextViaCopyFallback()
     }
 
-    private func readSelectedTextWithAccessibility() -> String? {
-        guard let frontmostApp = NSWorkspace.shared.frontmostApplication else { return nil }
-        let appElement = AXUIElementCreateApplication(frontmostApp.processIdentifier)
+    nonisolated private static func readSelectedTextWithAccessibility(pid: pid_t) -> String? {
+        let appElement = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(appElement, 0.2)
         var focusedObject: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedObject) == .success,
               let focusedObject else {
@@ -182,6 +189,7 @@ final class GrammarService: ObservableObject {
 
         var selectedText: CFTypeRef?
         let focusedElement = focusedObject as! AXUIElement
+        AXUIElementSetMessagingTimeout(focusedElement, 0.2)
         guard AXUIElementCopyAttributeValue(focusedElement, kAXSelectedTextAttribute as CFString, &selectedText) == .success else {
             return nil
         }

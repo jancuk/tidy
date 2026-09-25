@@ -48,7 +48,7 @@ enum TidyGoal: String, CaseIterable, Identifiable, Codable {
         case .cleanup:
             [.fileTidy]
         case .dailyWork:
-            [.today, .workflows, .data, .notifications, .jira, .asana]
+            [.today, .meetings, .workflows, .data, .notifications, .jira, .asana]
         case .developerDesk:
             [.data, .terminal, .developerTools, .aiRequestLog]
         }

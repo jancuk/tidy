@@ -13,12 +13,20 @@ final class DataWorkspaceService: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var resultCounts: [DataResultCount] = []
     @Published private(set) var recipes: [DataWorkflowRecipe] = []
+    @Published private(set) var tableOptions = DataTableOptions()
+    @Published private(set) var pageOffset = 0
+    @Published private(set) var tableRevision = 0
+    let pageSize = 250
+
     @Published var configuration = DataWorkflowConfiguration()
 
     private let engine: any TabularDataEngine
     private let ai: DataAIService
     private let defaults: UserDefaults
     private var currentSQL: String?
+    private var baseSQL: String?
+    private var baseRowCount = 0
+    private let resultTableName = "tidy_preview_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
     private var completedConfiguration: DataWorkflowConfiguration?
     private var completedMode: DataWorkspaceMode?
     private var completedSourceIDs: [UUID] = []
@@ -47,6 +55,74 @@ final class DataWorkspaceService: ObservableObject {
         currentPlan != nil && (completedConfiguration != configuration || completedMode != mode || completedSourceIDs != sources.map(\.id))
     }
     var canExport: Bool { currentSQL != nil && !result.columns.isEmpty && !isRunning && !resultIsOutdated }
+
+    var hasPreviousPage: Bool { pageOffset > 0 }
+    var hasNextPage: Bool { pageOffset + result.rows.count < result.totalRowCount }
+    var displayedRange: String {
+        guard !result.rows.isEmpty else { return "0" }
+        return "\((pageOffset + 1).formatted())–\((pageOffset + result.rows.count).formatted())"
+    }
+
+    func applyTableOptions(_ options: DataTableOptions) async {
+        guard !isRunning, let baseSQL else { return }
+        isRunning = true
+        defer { isRunning = false }
+        errorMessage = nil
+        do {
+            let sql = try DataTableQueryBuilder.build(baseSQL: baseSQL, columns: result.columns, options: options)
+            let countSQL = try DataTableQueryBuilder.build(baseSQL: baseSQL, columns: result.columns, options: options, includeOrder: false)
+            if options.search == tableOptions.search && options.filters == tableOptions.filters &&
+                options.matchAny == tableOptions.matchAny && options.sorts == tableOptions.sorts {
+                tableOptions = options
+                tableRevision += 1
+                return
+            }
+            let count: Int
+            if options.search == tableOptions.search && options.filters == tableOptions.filters && options.matchAny == tableOptions.matchAny {
+                count = result.totalRowCount
+            } else if !options.hasConditions {
+                count = baseRowCount
+            } else {
+                let total = try await engine.queryPage("SELECT COUNT(*) FROM (\(countSQL)) counted", limit: 1, offset: 0, knownTotal: 1)
+                count = Int(total.rows.first?[0] ?? "0") ?? 0
+            }
+            let table = try await engine.queryPage(sql, limit: pageSize, offset: 0, knownTotal: count)
+            result = table
+            tableOptions = options
+            currentSQL = sql
+            pageOffset = 0
+            tableRevision += 1
+            status = "\(count.formatted()) of \(baseRowCount.formatted()) rows · filters and sorting apply to the full table"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func sortColumn(_ column: String, adding: Bool = false) async {
+        var options = tableOptions
+        if let index = options.sorts.firstIndex(where: { $0.column == column }) {
+            var sort = options.sorts[index]
+            sort.ascending.toggle()
+            if adding { options.sorts[index] = sort } else { options.sorts = [sort] }
+        } else {
+            let sort = DataColumnSort(column: column)
+            if adding { options.sorts.append(sort) } else { options.sorts = [sort] }
+        }
+        await applyTableOptions(options)
+    }
+
+    func changePage(forward: Bool) async {
+        guard !isRunning, let currentSQL, forward ? hasNextPage : hasPreviousPage else { return }
+        isRunning = true
+        defer { isRunning = false }
+        errorMessage = nil
+        let offset = max(0, pageOffset + (forward ? pageSize : -pageSize))
+        do {
+            result = try await engine.queryPage(currentSQL, limit: pageSize, offset: offset, knownTotal: result.totalRowCount)
+            pageOffset = offset
+            tableRevision += 1
+        } catch { errorMessage = error.localizedDescription }
+    }
 
     func addCSVs(_ urls: [URL]) async {
         guard !isRunning else { return }
@@ -246,10 +322,13 @@ final class DataWorkspaceService: ObservableObject {
 
     private func execute(_ plan: DataAIPlan) async throws {
         status = "Calculating across all rows…"
-        let table = try await engine.query(plan.sql, limit: 250)
+        try await engine.removeTable(named: resultTableName)
+        let snapshot = try await engine.registerQuery(plan.sql, id: UUID(), tableName: resultTableName, displayName: plan.title)
+        let sql = DataQueryBuilder.preview(tableName: snapshot.tableName)
+        let table = try await engine.queryPage(sql, limit: pageSize, offset: 0, knownTotal: snapshot.rowCount)
         var counts: [DataResultCount] = []
         if table.columns.contains("_tidy_status") {
-            let grouped = try await engine.query("SELECT \"_tidy_status\", COUNT(*) FROM (\(plan.sql)) result GROUP BY \"_tidy_status\" ORDER BY \"_tidy_status\"", limit: 20)
+            let grouped = try await engine.query("SELECT \"_tidy_status\", COUNT(*) FROM (\(sql)) result GROUP BY \"_tidy_status\" ORDER BY \"_tidy_status\"", limit: 20)
             counts = grouped.rows.compactMap { row in
                 guard row.count >= 2, let label = row[0], let number = row[1], let count = Int(number) else { return nil }
                 return DataResultCount(label: label, count: count)
@@ -258,7 +337,12 @@ final class DataWorkspaceService: ObservableObject {
         result = table
         resultCounts = counts
         currentPlan = plan
-        currentSQL = plan.sql
+        currentSQL = sql
+        baseSQL = sql
+        baseRowCount = snapshot.rowCount
+        tableOptions = DataTableOptions()
+        pageOffset = 0
+        tableRevision += 1
         completedConfiguration = configuration
         completedMode = mode
         completedSourceIDs = sources.map(\.id)
@@ -269,10 +353,13 @@ final class DataWorkspaceService: ObservableObject {
         errorMessage = nil
         do {
             let sql = DataQueryBuilder.preview(tableName: source.tableName)
-            let table = try await engine.query(sql, limit: 250)
+            let table = try await engine.queryPage(sql, limit: pageSize, offset: 0, knownTotal: source.rowCount)
             clearResult()
             result = table
             currentSQL = sql
+            baseSQL = sql
+            baseRowCount = source.rowCount
+            tableRevision += 1
             status = "Source preview · \(source.rowCount.formatted()) rows · \(source.columns.count) columns"
         } catch { fail(error) }
     }
@@ -282,6 +369,11 @@ final class DataWorkspaceService: ObservableObject {
         resultCounts = []
         currentPlan = nil
         currentSQL = nil
+        baseSQL = nil
+        baseRowCount = 0
+        tableOptions = DataTableOptions()
+        pageOffset = 0
+        tableRevision += 1
         completedConfiguration = nil
         messages = []
     }

@@ -41,6 +41,7 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
     case languageTool = "languagetool"
     case openCode = "opencode"
     case ollama
+    case jevCodex = "typeSafe"
     case codexCLI = "codex-cli"
     case claudeCLI = "claude-cli"
 
@@ -62,12 +63,16 @@ enum GrammarProviderID: String, CaseIterable, Identifiable {
             "OpenCode (Zen)"
         case .ollama:
             "Ollama (Local)"
+        case .jevCodex:
+            "Jev + Codex"
         case .codexCLI:
             "Codex CLI"
         case .claudeCLI:
             "Claude (Subscription)"
         }
     }
+
+    var chatProvider: GrammarProviderID { self == .jevCodex ? .codexCLI : self }
 
     var requiresAPIKey: Bool {
         switch self {

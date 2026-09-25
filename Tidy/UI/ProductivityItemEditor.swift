@@ -8,14 +8,25 @@ struct ProductivityItemEditor: View {
     @State private var enablingNotifications = false
     @State private var showOptions: Bool
     @State private var codeFont = false
+    private let startsInReadingMode: Bool
 
-    init(item: ProductivityItem) {
+    init(item: ProductivityItem, startsInReadingMode: Bool = false) {
         _item = State(initialValue: item)
         _tags = State(initialValue: item.tags.joined(separator: ", "))
         _showOptions = State(initialValue: item.kind == .exercise || item.dueAt != nil || !item.tags.isEmpty)
+        self.startsInReadingMode = startsInReadingMode
     }
 
     var body: some View {
+        if item.kind == .note {
+            WritingEditor(item: item, draft: productivity.writingDrafts.first { $0.id == item.id }, startsInReadingMode: startsInReadingMode)
+                .environmentObject(productivity)
+        } else {
+            itemEditor
+        }
+    }
+
+    private var itemEditor: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Image("TidyLogo").resizable().frame(width: 26, height: 26)
@@ -25,19 +36,7 @@ struct ProductivityItemEditor: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    TextField("Give it a title…", text: $item.title)
-                        .font(.system(size: 28, weight: .regular, design: .serif)).textFieldStyle(.plain)
-                        .padding(.vertical, 10).accessibilityLabel("Item title")
-                    HStack {
-                        Text(item.kind == .note ? "A little space for your thoughts" : "Details and next steps")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                        Spacer()
-                        Toggle("Code font", isOn: $codeFont).toggleStyle(.button)
-                            .font(.system(size: 11)).buttonStyle(WorkspaceButtonStyle())
-                    }
-                    TodayWritingField(text: $item.body,
-                                      placeholder: item.kind == .note ? "Write freely. Ideas, snippets, links — anything you want to keep." : "Add context, a checklist, or the first small step…",
-                                      label: "Item details", height: 245, monospaced: codeFont)
+                    plainItemContent
                     if let source = item.source {
                         HStack {
                             Label(source.appName ?? "Captured text", systemImage: "link").font(.caption).foregroundStyle(.secondary)
@@ -52,7 +51,7 @@ struct ProductivityItemEditor: View {
                                     ForEach(ProductivityPriority.allCases) { Text($0.title).tag($0) }
                                 }.frame(width: 220)
                                 Spacer()
-                                Toggle(item.kind == .note ? "Pin to Today" : "Pin item", isOn: $item.pinned)
+                                Toggle("Pin item", isOn: $item.pinned)
                             }
                             Divider()
                             if item.kind == .exercise { routineFields }
@@ -86,9 +85,29 @@ struct ProductivityItemEditor: View {
                     if productivity.save(item) { dismiss() }
                 }
                 .buttonStyle(WorkspaceButtonStyle(prominent: true)).keyboardShortcut("s", modifiers: .command)
-                .disabled(item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !productivity.storageReady)
+                .disabled(!canSave || !productivity.storageReady)
             }
         }.padding(30).frame(width: 670, height: 690).background(WorkspaceDesign.canvas)
+    }
+
+    private var canSave: Bool {
+        !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var plainItemContent: some View {
+        Group {
+            TextField("Give it a title…", text: $item.title)
+                .font(.system(size: 28, weight: .regular, design: .serif)).textFieldStyle(.plain)
+                .padding(.vertical, 10).accessibilityLabel("Item title")
+            HStack {
+                Text("Details and next steps").font(.system(size: 12)).foregroundStyle(.secondary)
+                Spacer()
+                Toggle("Code font", isOn: $codeFont).toggleStyle(.button)
+                    .font(.system(size: 11)).buttonStyle(WorkspaceButtonStyle())
+            }
+            TodayWritingField(text: $item.body, placeholder: "Add context, a checklist, or the first small step…",
+                              label: "Item details", height: 245, monospaced: codeFont)
+        }
     }
 
     private var planningFields: some View {

@@ -290,7 +290,9 @@ struct MCPFetchedContext: Sendable {
 enum MCPError: LocalizedError, Equatable {
     case invalidConfiguration(String)
     case transport(status: Int, body: String)
+    case rateLimited(TimeInterval)
     case invalidResponse(String)
+    case responseTooLarge
     case rpc(code: Int, message: String)
     case unsupportedProtocol(String)
     case sessionExpired
@@ -301,12 +303,16 @@ enum MCPError: LocalizedError, Equatable {
         switch self {
         case .invalidConfiguration(let message):
             message
+        case .rateLimited(let seconds):
+            "MCP rate limit reached. Retry after \(Int(ceil(seconds))) seconds."
         case .transport(let status, let body):
             body.isEmpty
                 ? "MCP server returned HTTP \(status)."
                 : "MCP server returned HTTP \(status) with an error response."
         case .invalidResponse(let message):
             "Invalid MCP response: \(message)"
+        case .responseTooLarge:
+            "Workbench shortened an oversized response. Try a smaller page or narrower date range."
         case .rpc(let code, let message):
             "MCP error \(code): \(message)"
         case .unsupportedProtocol(let version):

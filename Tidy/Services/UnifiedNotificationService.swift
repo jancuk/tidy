@@ -12,13 +12,15 @@ final class UnifiedNotificationService: ObservableObject {
     @Published private(set) var connectionStatus = "Not connected"
     @Published private(set) var lastUpdatedAt: Date?
 
+    private let slackReplies: SlackReplyService
     private let requestLogStore: AIRequestLogStore
     private var refreshTimer: Timer?
     private let cacheURL: URL
     private let briefingCacheURL: URL
 
-    init(requestLogStore: AIRequestLogStore, cacheDirectory: URL? = nil) {
+    init(requestLogStore: AIRequestLogStore, cacheDirectory: URL? = nil, slackReplies: SlackReplyService) {
         self.requestLogStore = requestLogStore
+        self.slackReplies = slackReplies
         let directory = cacheDirectory ?? SecureLocalStorage.applicationSupportDirectory()
         cacheURL = directory.appendingPathComponent("notification-digests.json")
         briefingCacheURL = directory.appendingPathComponent("notification-briefing.json")
@@ -103,43 +105,33 @@ final class UnifiedNotificationService: ObservableObject {
             for connector in Self.notificationConnectors {
                 let source = connector.source
                 do {
-                    let route = try await MCPToolBroker.resolve(
-                        source: source,
-                        advertisedTools: tools,
-                        client: client
-                    )
                     let rawText: String
+                    let toolName: String
                     if source == .slack {
-                        rawText = try await slackNotificationText(
-                            route: route,
-                            advertisedTools: tools,
-                            client: client
-                        )
+                        await slackReplies.refresh()
+                        toolName = "Slack reply inbox"
+                        let topics = slackReplies.activeTopics.prefix(10)
+                        rawText = topics.isEmpty ? "No conversations in the local Slack reply inbox. Enable monitoring in Slack replies settings." : topics.map {
+                            "#\($0.latest.channelName): \($0.analysisIsCurrent ? $0.analysis!.summary : $0.latest.text)"
+                        }.joined(separator: "\n\n")
                     } else {
-                        guard let arguments = MCPToolRouter.arguments(
-                            for: route.tool,
-                            source: source,
-                            query: source.defaultQuery
-                        ) else {
+                        let route = try await MCPToolBroker.resolve(source: source, advertisedTools: tools, client: client)
+                        toolName = route.tool.name
+                        guard let arguments = MCPToolRouter.arguments(for: route.tool, source: source, query: source.defaultQuery) else {
                             throw MCPError.noCompatibleTool(source.title)
                         }
-                        let result = try await MCPToolBroker.execute(
-                            route: route,
-                            arguments: arguments,
-                            client: client
-                        )
-                        rawText = result.displayText
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let result = try await MCPToolBroker.execute(route: route, arguments: arguments, client: client)
+                        rawText = result.displayText.trimmingCharacters(in: .whitespacesAndNewlines)
                     }
                     guard !rawText.isEmpty else {
-                        throw MCPError.invalidResponse("\(route.tool.name) returned no readable content.")
+                        throw MCPError.invalidResponse("\(toolName) returned no readable content.")
                     }
                     let summary = await summarize(rawText, source: source)
                     refreshed.append(UnifiedNotificationDigest(
                         source: source,
                         summary: summary,
                         rawPreview: String(rawText.prefix(20_000)),
-                        toolName: route.tool.name,
+                        toolName: toolName,
                         fetchedAt: Date()
                     ))
                 } catch {
@@ -162,109 +154,6 @@ final class UnifiedNotificationService: ObservableObject {
                     ($0, error.localizedDescription)
                 }
             )
-        }
-    }
-
-    private func slackNotificationText(
-        route: MCPToolRoute,
-        advertisedTools: [MCPTool],
-        client: MCPClient
-    ) async throws -> String {
-        let focus = SlackNotificationFocus.stored()
-        let directMention = await slackDirectMention(
-            advertisedTools: advertisedTools,
-            client: client
-        )
-        var resultTexts: [String] = []
-        var lastError: Error?
-        var mergedText = SlackNotificationFocus.mergedTopicText(
-            resultTexts,
-            limit: focus.topicLimit
-        )
-
-        for daysAgo in [7, 30, 180, 730] {
-            let queries = focus.searchQueries(
-                directMention: directMention,
-                dateFilter: Self.slackDateFilter(daysAgo: daysAgo)
-            )
-            for page in 1...3 {
-                for query in queries {
-                    guard var arguments = MCPToolRouter.arguments(
-                        for: route.tool,
-                        source: .slack,
-                        query: query
-                    ) else {
-                        throw MCPError.noCompatibleTool(MCPIntegrationSource.slack.title)
-                    }
-                    let properties = route.tool.inputSchema
-                        .objectValue?["properties"]?
-                        .objectValue ?? [:]
-                    if properties["count"] != nil {
-                        arguments["count"] = .number(Double(focus.topicLimit))
-                    }
-                    if properties["page"] != nil {
-                        arguments["page"] = .number(Double(page))
-                    }
-                    do {
-                        let result = try await MCPToolBroker.execute(
-                            route: route,
-                            arguments: arguments,
-                            client: client
-                        )
-                        resultTexts.append(result.displayText)
-                    } catch {
-                        lastError = error
-                    }
-                }
-                mergedText = SlackNotificationFocus.mergedTopicText(
-                    resultTexts,
-                    limit: focus.topicLimit
-                )
-                if SlackNotificationFocus.topicCount(in: mergedText) >= focus.topicLimit {
-                    return mergedText
-                }
-            }
-        }
-
-        if resultTexts.isEmpty, let lastError {
-            throw lastError
-        }
-        return mergedText
-    }
-
-    private func slackDirectMention(
-        advertisedTools: [MCPTool],
-        client: MCPClient
-    ) async -> String {
-        do {
-            guard advertisedTools.contains(where: { $0.name == "whoami" }) else {
-                return "to:me"
-            }
-            let identityResult = try await client.callTool(name: "whoami", arguments: [:])
-            let identity = try MCPToolBroker.decodedValue(from: identityResult.displayText)
-            guard let email = identity.objectValue?["email"]?.stringValue, !email.isEmpty else {
-                return "to:me"
-            }
-
-            let lookupRoute = try await MCPToolBroker.resolveNamedTool(
-                "slack_lookup_user",
-                source: .slack,
-                advertisedTools: advertisedTools,
-                client: client
-            )
-            let lookupResult = try await MCPToolBroker.execute(
-                route: lookupRoute,
-                arguments: ["email": .string(email)],
-                client: client
-            )
-            let lookup = try MCPToolBroker.decodedValue(from: lookupResult.displayText)
-            guard let username = lookup.objectValue?["user"]?.objectValue?["name"]?.stringValue,
-                  !username.isEmpty else {
-                return "to:me"
-            }
-            return "@\(username)"
-        } catch {
-            return "to:me"
         }
     }
 
@@ -376,15 +265,6 @@ final class UnifiedNotificationService: ObservableObject {
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return UnifiedNotificationBriefing(summary: trimmed, generatedAt: Date())
-    }
-
-    private static func slackDateFilter(daysAgo: Int) -> String {
-        let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return "after:\(formatter.string(from: date))"
     }
 
     private func loadCache() {

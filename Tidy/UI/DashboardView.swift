@@ -5,6 +5,7 @@ import SwiftUI
 enum DashboardSection: String, Identifiable, CaseIterable {
     case home
     case today
+    case meetings
     case workflows
     case fileTidy
     case clipboard
@@ -22,6 +23,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var title: String {
         switch self {
+        case .meetings: "Meetings"
         case .today: "Today"
         case .home:           "Home"
         case .workflows:      "Workflows"
@@ -41,6 +43,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var fullTitle: String {
         switch self {
+        case .meetings: "Meeting Notes"
         case .today: "Today · Notes & Reminders"
         case .home:           "Home"
         case .workflows:      "Developer Workflows"
@@ -60,6 +63,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var systemImage: String {
         switch self {
+        case .meetings: "waveform"
         case .today: "sun.max"
         case .home:           "house"
         case .workflows:      "arrow.triangle.branch"
@@ -79,6 +83,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var activeSystemImage: String {
         switch self {
+        case .meetings: "waveform"
         case .today: "sun.max.fill"
         case .home:           "house.fill"
         case .workflows:      "arrow.triangle.branch"
@@ -98,6 +103,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var shortcutDigit: Character {
         switch self {
+        case .meetings: "m"
         case .today: "t"
         case .home:           "1"
         case .workflows:      "w"
@@ -116,6 +122,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
     }
 
     var shortcutLabel: String {
+        if self == .meetings { return "⌘⇧M" }
         if self == .today { return "⌘⇧T" }
         if self == .notifications { return "⌘⇧N" }
         if self == .workflows { return "⌘⇧W" }
@@ -125,7 +132,7 @@ enum DashboardSection: String, Identifiable, CaseIterable {
 
     var shortcutModifiers: EventModifiers {
         switch self {
-        case .notifications, .workflows, .data, .today: [.command, .shift]
+        case .notifications, .workflows, .data, .today, .meetings: [.command, .shift]
         default: [.command]
         }
     }
@@ -143,7 +150,7 @@ struct SidebarView: View {
 
     private var navigationGroups: [(title: String, sections: [DashboardSection])] {
         let groups: [(String, [DashboardSection])] = [
-            ("Workspace", [.home, .today, .clipboard, .workflows]),
+            ("Workspace", [.home, .today, .meetings, .clipboard, .workflows]),
             ("Tools", [.fileTidy, .data, .terminal, .developerTools]),
             ("Connected", [.notifications, .jira, .asana]),
             ("History", [.correctionLog, .aiRequestLog])
@@ -291,6 +298,8 @@ struct DashboardView: View {
                 case .today:
                     TodayView().environmentObject(appState.productivityService)
                         .environmentObject(appState.productivitySyncService)
+                case .meetings:
+                    MeetingsView().environmentObject(appState.meetingService)
                 case .workflows:
                     DeveloperWorkflowsView()
                 case .fileTidy:
